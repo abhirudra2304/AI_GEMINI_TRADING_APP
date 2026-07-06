@@ -1,0 +1,15 @@
+fastparquet
+fpdf2
+google-genai
+logzero
+numpy
+pytest
+pandas
+pandas-ta
+pyarrow
+pyotp
+python-dotenv
+requests
+scipy
+smartapi-python
+websocket-client

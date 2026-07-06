@@ -1,0 +1,63 @@
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+
+# API credentials and keys
+*.key
+*.pem
+credentials.json
+
+# Cache and temporary files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Database and logs
+*.db
+*.sqlite
+*.sqlite3
+signals.db
+logs/
+*.log
+
+# Cache directories
+.cache/
+historical_data/
+
+# Compiled files
+*.pyc
+*.pyo
+# Virtual Environment
+.venv/
+venv/
+
+# Cache
+*.pkl
+
+# Generated reports
+scan_report_*.pdf
+manual_scan_results_*.csv
+backtest_results.csv
+
+# Report folders
+scan reports/
+reports/
+
+# Profiling
+profiler_report.pkl
+profiler_stats.pkl
+pocket fm/
