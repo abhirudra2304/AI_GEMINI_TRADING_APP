@@ -1,24 +1,45 @@
 import os
 import sys
+
+# Add the project root to the Python path to resolve import issues
+project_root = os.path.dirname(os.path.abspath(__file__))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# --- AUTO VENV ACTIVATION ---
+from venv_activator import ensure_venv
+ensure_venv()
+# --------------------------
+
+import threading
+import subprocess
 from datetime import datetime
+import time
 from dotenv import load_dotenv
+from dataclasses import dataclass
+from typing import Optional
 
 import pandas as pd
 
 import config
 from data_broker import DataBroker
+from discovery import execute_macro_discovery
 from scanner_engine import HybridScanner
 from profiler import profiler
 from orchestrator import (
-    DiscoveryCache,
-    execute_macro_discovery,
-    format_terminal_table,
-    load_last_signals,
     run_fast_execution_scan,
-    run_report_pipeline,    
-    save_last_signals,
-    start_background_report,
+    run_eod_scan,
 )
+from reporting import (
+    format_terminal_table,
+    run_report_pipeline,
+    start_background_report,
+    export_eod_pdf,
+    fetch_gemini_news,
+)
+from cleaner import run_cleanup
+from downloader import download_historical_constituents
+from cache import DiscoveryCache, get_cached_discovery_row, load_last_signals, save_last_signals
 from utils import add_decision_scores
 
 def build_runtime():
@@ -51,7 +72,14 @@ def run_discovery(strategy: str = "SWING", force_refresh: bool = True):
     profiler.reset()
     print(f"🚀 Phase 1 discovery refresh for {strategy.upper()} setups...")
     broker, scanner = build_runtime()
-    _, full_df = execute_macro_discovery(broker, scanner, strategy=strategy, force_refresh=force_refresh, cache=DiscoveryCache(), caller="Discovery")
+    _, full_df, regime_analyzer = execute_macro_discovery(broker, scanner, strategy=strategy, force_refresh=force_refresh, cache=DiscoveryCache(), caller="Discovery")
+    
+    print("\n" + "="*80)
+    print("🏆 TOP 10 SCANNED STOCKS RANKING (DISCOVERY PHASE)")
+    df_slice = full_df.head(10)
+    df_str = df_slice[['Symbol', 'Sector', 'RS_Pctl', 'ADX', 'Rank_Score']].to_string(index=False)
+    print(format_terminal_table(df_str, df_slice))
+    print("="*80 + "\n")
     print_discovery_views(full_df)
     profiler.save_report()
     profiler.print_report()
@@ -66,7 +94,7 @@ def run_execution(strategy: str = "BTST", force_refresh: bool = False):
 
     if force_refresh:
         print(f"♻️ Force refresh requested. Rebuilding {strategy.upper()} discovery cache first...")
-        execute_macro_discovery(broker, scanner, strategy=strategy, force_refresh=True, cache=DiscoveryCache(), caller="Discovery")
+        execute_macro_discovery(broker, scanner, strategy=strategy, force_refresh=True, cache=DiscoveryCache(), caller="Discovery")[0]
 
     # Phase 2 deliberately reads Phase 1 output and fetches only intraday candles for top ranked stocks.
     df_signals = run_fast_execution_scan(broker, scanner, strategy=strategy, top_n=config.Discovery.TOP_N_FAST_SCAN, display=True, force_refresh=force_refresh, caller="Scanner")
@@ -95,6 +123,167 @@ def run_execution(strategy: str = "BTST", force_refresh: bool = False):
     return df_signals
 
 
+def _print_top5(title: str, df: pd.DataFrame, score_col: str, cols: list):
+    print(f"\n{'-'*80}\n🏆 TOP 5 {title}\n{'-'*80}")
+    if df.empty:
+        print("  (no signals)")
+        return
+    ranked = df.sort_values(by=score_col, ascending=False) if score_col in df.columns else df
+    slice_df = ranked[[c for c in cols if c in ranked.columns]].head(5)
+    print(slice_df.to_string(index=False))
+
+
+def _notify_windows(title: str, message: str) -> None:
+    """
+    Fire-and-forget Windows balloon notification via PowerShell's built-in
+    .NET Forms (System.Windows.Forms.NotifyIcon) - deliberately NOT a
+    MessageBox, which blocks until someone clicks OK and would leave an
+    unattended scheduled run hung indefinitely with no one there to dismiss it.
+    No extra pip dependency: PowerShell + .NET Forms ships with Windows.
+    """
+    ps_script = (
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "Add-Type -AssemblyName System.Drawing; "
+        "$n = New-Object System.Windows.Forms.NotifyIcon; "
+        "$n.Icon = [System.Drawing.SystemIcons]::Information; "
+        "$n.Visible = $true; "
+        f"$n.ShowBalloonTip(15000, '{title}', '{message}', [System.Windows.Forms.ToolTipIcon]::Info); "
+        "Start-Sleep -Seconds 16; "
+        "$n.Dispose()"
+    )
+    try:
+        subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+            timeout=25, capture_output=True,
+        )
+    except Exception as e:
+        print(f"⚠️ Windows notification failed (non-fatal): {e}")
+
+
+def _combined_top_symbols(results: dict, top_n: int = 10) -> list:
+    """Top symbols across all three eod strategies, deduped (preserving order),
+    for the background Gemini news fetch below."""
+    score_cols = {'BTST': 'BTST_Final_Score', 'SWING': 'Decision_Score', 'EMFB': 'EMFB_Score'}
+    symbols: list = []
+    for strategy, score_col in score_cols.items():
+        df = results.get(strategy, pd.DataFrame())
+        if df.empty or 'Symbol' not in df.columns:
+            continue
+        ranked = df.sort_values(by=score_col, ascending=False) if score_col in df.columns else df
+        symbols.extend(ranked['Symbol'].head(5).tolist())
+    return list(dict.fromkeys(symbols))[:top_n]
+
+
+def _run_eod_news_enhancement(results: dict, base_pdf_filename: str) -> None:
+    """
+    Background-only companion to run_eod()'s fast PDF: fetches Gemini news for
+    the eod picks and saves a second, news-enriched PDF. Deliberately NOT part
+    of the synchronous fast path - see export_eod_pdf's docstring for why a
+    live LLM call can't sit in front of the deadline-critical first PDF.
+    """
+    symbols = _combined_top_symbols(results)
+    if not symbols:
+        return
+    try:
+        news_summary = fetch_gemini_news(symbols)
+    except Exception as e:
+        print(f"⚠️ Background Gemini news fetch failed (non-fatal): {e}")
+        return
+
+    news_pdf_filename = base_pdf_filename.replace('.pdf', '_news.pdf')
+    if export_eod_pdf(results, news_pdf_filename, news_summary=news_summary):
+        _notify_windows("EOD News Added", f"News-enriched report saved: {news_pdf_filename}")
+        print(f"📰 EOD news-enriched report saved to {os.path.abspath(news_pdf_filename)}")
+
+
+def run_eod():
+    """Runs BTST, SWING and EMFB sequentially and prints one consolidated Top 5 report."""
+    from lifecycle_manager import shutdown_manager
+    profiler.reset()
+    print(f"🌇 EOD scan starting at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}...")
+    try:
+        broker, scanner = build_runtime()
+    except Exception as e:
+        print(f"❌ Could not start a broker session: {e}")
+        print("Run `python main.py status` to diagnose credentials/connectivity before retrying `eod`.")
+        profiler.save_report()
+        profiler.print_report()
+        return {}
+
+    results = run_eod_scan(broker, scanner, top_n=config.Discovery.TOP_N_FAST_SCAN)
+
+    is_post_close = not (
+        datetime.strptime("09:15", "%H:%M").time()
+        <= datetime.now(config.MARKET_TZ).time()
+        <= datetime.strptime("15:30", "%H:%M").time()
+    )
+    if is_post_close:
+        results['_stale_run_warning'] = (
+            "This eod run started outside NSE market hours (09:15-15:30 IST). "
+            "Phase 2 confirmation still fetches 'live' 15-min candles, which are "
+            "stale/closed at this hour, so picks above may not reflect a real "
+            "intraday opportunity - do not treat this the same as the scheduled "
+            "15:15 run."
+        )
+        print(f"\n⚠️ {results['_stale_run_warning']}")
+
+    print("\n" + "=" * 80)
+    print("📊 END-OF-DAY CONSOLIDATED REPORT")
+    print("=" * 80)
+
+    _print_top5(
+        "BTST PICKS", results.get('BTST', pd.DataFrame()), 'BTST_Final_Score',
+        ['Symbol', 'Sector', 'BTST_Final_Score', 'Strength', 'Trigger', 'Stop', 'Target', 'Risk_Reward'],
+    )
+    _print_top5(
+        "SWING PICKS", results.get('SWING', pd.DataFrame()), 'Decision_Score',
+        ['Symbol', 'Sector', 'Decision_Score', 'Strength', 'Trigger', 'Stop', 'Target', 'Risk_Reward'],
+    )
+    _print_top5(
+        "EMERGING MOMENTUM (EMFB) PICKS", results.get('EMFB', pd.DataFrame()), 'EMFB_Score',
+        ['Symbol', 'Sector', 'EMFB_Score', 'Confidence', 'Trigger', 'Stop', 'Target'],
+    )
+
+    stage_errors = results.get('_errors') or {}
+    if stage_errors:
+        print(f"\n{'-'*80}\n⚠️  STAGE FAILURES (results above reflect only the stages that succeeded)\n{'-'*80}")
+        for stage, err in stage_errors.items():
+            print(f"  {stage}: {err}")
+
+    print("=" * 80 + "\n")
+
+    # Unattended-run support: eod previously only printed to the terminal, so a
+    # scheduled/background run with no one watching would lose the output the
+    # moment the window closed. Save a PDF and pop a non-blocking notification
+    # so results are checkable later regardless of whether anyone was present.
+    pdf_filename = f"eod_report_{datetime.now().strftime('%Y_%m_%d_%H%M')}.pdf"
+    pdf_saved = export_eod_pdf(results, pdf_filename)
+    if pdf_saved:
+        pdf_path = os.path.abspath(pdf_filename)
+        notify_title = "EOD Scan Complete (POST-CLOSE - STALE)" if is_post_close else "EOD Scan Complete"
+        _notify_windows(notify_title, f"Report saved: {pdf_filename}")
+        print(f"📄 EOD report saved to {pdf_path}")
+
+        # eod mode has no should_wait/shutdown_event.wait() like btst/swing do,
+        # so a daemon thread here would otherwise get killed the instant this
+        # function returns and the process exits. Joining with a bounded
+        # timeout keeps the process alive just long enough for the slower news
+        # PDF to finish, WITHOUT delaying the fast PDF/notification above,
+        # which already happened - and without hanging indefinitely if Gemini
+        # is slow or down.
+        news_thread = threading.Thread(
+            target=_run_eod_news_enhancement, args=(results, pdf_filename),
+            name="EODNewsEnhancement", daemon=True,
+        )
+        news_thread.start()
+        shutdown_manager.register_worker(news_thread)
+        news_thread.join(timeout=60)
+
+    profiler.save_report()
+    profiler.print_report()
+    return results
+
+
 def run_report_only():
     payload = load_last_signals()
     if not payload:
@@ -102,9 +291,102 @@ def run_report_only():
         return
     created_at = payload.get("created_at", "unknown time")
     df_signals = payload.get("signals")
+
+    # --- ADD THIS TYPE GUARD ---
+    if not isinstance(df_signals, pd.DataFrame):
+        print("⚠️ Saved signals are corrupted or missing.")
+        return
+    # ---------------------------
+
     print(f"📄 Building report from last saved signals ({created_at})...")
     run_report_pipeline(df_signals, strategy="report")
 
+
+def run_live_scanner(strategy: str = "INTRADAY"):
+    """Runs the fast execution scanner in a continuous loop."""
+    profiler.reset()
+    print(f"🚀 Starting LIVE scanner for {strategy.upper()} setups...")
+    print("This will run the fast scanner in a loop. Press CTRL+C to exit.")
+    broker, scanner = build_runtime()
+    
+    # --- NEW: Connect WebSocket ---
+    broker.connect_websocket()
+    print("Giving WebSocket time to connect...")
+    time.sleep(5) # Allow a few seconds for the connection to establish
+    # ----------------------------
+
+    from emfb import run_emfb_scan, _is_scan_window
+
+    cache = DiscoveryCache()
+    discovery_thread: Optional[threading.Thread] = None
+    last_discovery_time = datetime.min
+    emfb_thread: Optional[threading.Thread] = None
+    last_emfb_prewarm_date = None
+
+    # Initial discovery run to ensure cache is populated
+    print(f"♻️ Performing initial discovery scan for {strategy.upper()}...")
+    watchlist, _, _ = execute_macro_discovery(broker, scanner, strategy=strategy, force_refresh=True, cache=cache, caller="LiveScannerInit")
+    if watchlist:
+        broker.subscribe_to_symbols(watchlist)
+
+    last_discovery_time = datetime.now()
+
+    while not shutdown_manager.is_shutdown():
+        now = datetime.now()
+        is_time_to_refresh = (now - last_discovery_time).total_seconds() > (config.LiveScanner.DISCOVERY_REFRESH_MINUTES * 60)
+
+        # 1. Refresh discovery cache periodically in the background
+        if is_time_to_refresh and (discovery_thread is None or not discovery_thread.is_alive()):
+            print(f"♻️ Live scanner is refreshing discovery cache for {strategy.upper()} in the background...")
+
+            def discovery_and_subscribe():
+                """Worker function to refresh discovery and update subscriptions."""
+                new_watchlist, _, _ = execute_macro_discovery(broker, scanner, strategy=strategy, force_refresh=True, cache=cache, caller="LiveScannerBG")
+                if new_watchlist:
+                    broker.subscribe_to_symbols(new_watchlist)
+            discovery_thread = threading.Thread(target=discovery_and_subscribe, daemon=True, name="BackgroundDiscovery")
+
+            discovery_thread.start()
+            last_discovery_time = now # Reset timer as soon as we kick off the refresh
+
+            if shutdown_manager.is_shutdown(): break
+
+        # 1b. Pre-warm EMFB's own result cache once per day, the moment its scan
+        # window opens (14:30) - so that a later one-off `python main.py eod`
+        # (run as a separate command, possibly close to market close) hits
+        # EMFB's cache instantly instead of re-fetching its full universe of
+        # intraday candles, which is the single biggest cost in an `eod` run.
+        # run_emfb_scan() is itself idempotent/cache-aware (see emfb.py), so
+        # this is just "trigger it early" - correctness doesn't depend on this
+        # firing at exactly 14:30, only on it firing before you run `eod`.
+        if _is_scan_window() and last_emfb_prewarm_date != now.date() and (emfb_thread is None or not emfb_thread.is_alive()):
+            print("♻️ Live scanner is pre-warming the EMFB cache in the background...")
+            emfb_thread = threading.Thread(target=lambda: run_emfb_scan(broker=broker), daemon=True, name="BackgroundEMFBPrewarm")
+            emfb_thread.start()
+            last_emfb_prewarm_date = now.date()
+
+            if shutdown_manager.is_shutdown(): break
+
+        # 2. Run the fast execution scan
+        # This function already clears the screen and prints a clean report.
+        run_fast_execution_scan(
+            broker, 
+            scanner, 
+            strategy=strategy, 
+            top_n=config.Discovery.TOP_N_FAST_SCAN, 
+            display=True, 
+            force_refresh=False, # Use the cache
+            caller="LiveScanner"
+        )
+        
+        if shutdown_manager.is_shutdown(): break
+
+        # 3. Wait for the next interval, but be responsive to shutdown.
+        print(f"\nNext scan in {config.LiveScanner.LOOP_INTERVAL_SECONDS} seconds. Press CTRL+C to exit.")
+        if shutdown_manager.shutdown_event.wait(timeout=config.LiveScanner.LOOP_INTERVAL_SECONDS):
+            break
+
+    print("\nLive scanner shut down.")
 
 def run_system_check():
     """
@@ -153,7 +435,7 @@ def run_system_check():
 
     # 3. Check Gemini API Connection
     print('\n[3/5] Checking Google Gemini API Connection...')
-    from orchestrator import fetch_gemini_news
+    from reporting import fetch_gemini_news
     try:
         news = fetch_gemini_news(['RELIANCE'])
         if '⚠️' in news:
@@ -175,26 +457,6 @@ def run_system_check():
     print('HEALTH CHECK COMPLETE')
     print('=' * 50)
 
-
-def get_cached_discovery_row(symbol: str, preferred_strategy: str = "SWING"):
-    """Finds the full discovery data row for a symbol from any valid cache."""
-    normalized_symbol = symbol.upper()
-    # Start with the preferred strategy, then check others as a fallback.
-    for strategy in dict.fromkeys([preferred_strategy, "BTST", "SWING", "GAP"]):
-        cache = DiscoveryCache()
-        if not cache.is_cache_valid(strategy):
-            continue
-        payload = cache.load_cache(strategy)
-        discovered_df = payload.get("discovered_df") if payload else None
-        if discovered_df is None or discovered_df.empty or "Symbol" not in discovered_df.columns:
-            continue
-        # Case-insensitive match on the symbol
-        matched = discovered_df[discovered_df["Symbol"].astype(str).str.upper() == normalized_symbol]
-        if not matched.empty:
-            return matched.iloc[0], strategy  # Return the full row and which strategy cache it came from
-    return None, None
-
-
 def suggested_holding_period(row: pd.Series) -> str:
     strength = str(row.get("Strength", "")).upper()
     if "VERY STRONG" in strength:
@@ -207,36 +469,50 @@ def suggested_holding_period(row: pd.Series) -> str:
 
 
 def holding_recommendation(signal, metrics, rs_percentile: float, decision_score: float) -> str:
-    close = float(metrics.get("Close", 0))
-    ema50 = float(metrics.get("EMA50", close) or close)
-    rsi = float(metrics.get("RSI", 50))
-    liquidity = float(metrics.get("Avg_Traded_Value_20d", 0))
+    close = float(metrics.get("Close") or 0)
+    ema50 = float(metrics.get("EMA50") or close)
+    rsi = float(metrics.get("RSI") or 50)
+    liquidity = float(metrics.get("Avg_Traded_Value_20d") or 0)
 
-    if liquidity <= 100_000_000 or close < ema50 or rsi < 50 or rs_percentile < 40:
+    if (liquidity is not None and liquidity <= config.HoldingRecommendation.MIN_LIQUIDITY_RUPEES
+            or close < ema50
+            or rsi < 50
+            or rs_percentile < config.HoldingRecommendation.MIN_RS_PERCENTILE):
         return "EXIT"
-    if signal and decision_score >= 65:
+
+    if signal and decision_score >= config.HoldingRecommendation.MIN_DECISION_SCORE_FOR_HOLD:
         return "HOLD"
+
     return "WATCH"
 
 
 def explain_decision_score(row: pd.Series):
-    score = float(row.get("Score", 0))
-    adx = min(float(row.get("ADX", 0)), 50.0)
-    rs = min(max(float(row.get("RS_Pctl", 0)), 0.0), 100.0)
-    ema_distance = min(abs(float(row.get("EMA50_Distance", 0))), 30.0)
+    """Explains the unified 'cooled' Decision_Score calculation from utils.py."""
+    score_val = float(row.get("Score") or 0)
+    rs_val = float(row.get("RS_Pctl") or 0)
+    sector_val = float(row.get("Sector_RS") or 0)
+    adx_val = float(row.get("ADX") or 0)
 
-    score_part = score * 0.60
-    adx_part = (adx / 50.0) * 100 * 0.15
-    rs_part = rs * 0.15
-    ema_part = (100 - ema_distance) * 0.10
-    total = score_part + adx_part + rs_part + ema_part
+    # Cooled (inverted) values
+    score_cool = 100 - score_val
+    rs_cool = 100 - rs_val
+    sector_cool = 100 - sector_val
+    adx_cool = 100 - (min(adx_val, 50.0) / 50.0 * 100)
 
-    print("\nDecision Score explanation")
-    print(f"  Scanner Score:   {score:.1f} x 60% = {score_part:.1f}")
-    print(f"  ADX:             {adx:.1f}/50 x 15 = {adx_part:.1f}")
-    print(f"  RS Percentile:   {rs:.1f} x 15% = {rs_part:.1f}")
-    print(f"  EMA50 Distance:  (100 - {ema_distance:.1f}) x 10% = {ema_part:.1f}")
-    print(f"  Final:           {total:.1f}")
+    # Weighted components
+    rs_part = rs_cool * 0.40
+    score_part = score_cool * 0.35
+    sector_part = sector_cool * 0.15
+    adx_part = adx_cool * 0.10
+    total = rs_part + score_part + sector_part + adx_part
+
+    print("\nDecision Score Explanation (Favors less-crowded setups)")
+    print(f"  RS Pctl ({rs_val:.1f}):        (100 - {rs_val:.1f}) * 40% = {rs_part:.1f}")
+    print(f"  Scanner Score ({score_val:.1f}):  (100 - {score_val:.1f}) * 35% = {score_part:.1f}")
+    print(f"  Sector RS ({sector_val:.1f}):    (100 - {sector_val:.1f}) * 15% = {sector_part:.1f}")
+    print(f"  ADX ({adx_val:.1f}):            (100 - {min(adx_val, 50.0):.1f}/50*100) * 10% = {adx_part:.1f}")
+    print("-" * 50)
+    print(f"  Final Decision Score:  {total:.1f}")
 
 
 def intraday_volume_ratio(df_15min: pd.DataFrame) -> float:
@@ -268,13 +544,23 @@ def _print_analysis_report(report_data: dict):
     print(f"  Suggested Holding Period:  {report_data.get('holding_period', 'N/A')}")
     print("=" * 80)
 
+@dataclass
+class AnalysisData:
+    """A container for all data required for a single-stock analysis."""
+    df_daily: pd.DataFrame
+    daily_metrics: dict
+    df_15min: pd.DataFrame
+    nifty_df: pd.DataFrame
+    rs_percentile: float
+    sector_rs: float
+    rs_source: str
 
-def _get_analysis_data(broker: DataBroker, scanner: HybridScanner, symbol: str, force_refresh: bool):
+
+def _get_analysis_data(broker: DataBroker, scanner: HybridScanner, symbol: str, force_refresh: bool) -> Optional[AnalysisData]:
     """
     Fetches all required data for a single-stock analysis, prioritizing cache.
 
-    Returns a tuple of (daily_df, daily_metrics, df_15min, nifty_df, rs_percentile, sector_rs, rs_source)
-    or (None, ...) if essential data is missing.
+    Returns an AnalysisData object on success, or None if essential data is missing.
     """
     caller_context = "Analyze"
 
@@ -282,6 +568,10 @@ def _get_analysis_data(broker: DataBroker, scanner: HybridScanner, symbol: str, 
     cached_row, rs_source = None, "neutral default"
     if not force_refresh:
         cached_row, rs_source = get_cached_discovery_row(symbol)
+        if rs_source is None:
+            # On cache miss, get_cached_discovery_row returns (None, None).
+            # The RS values will use the neutral default of 50.0, so the source should also be the neutral default.
+            rs_source = "neutral default"
 
     df_daily, daily_metrics = pd.DataFrame(), None
     rs_percentile, sector_rs = 50.0, 50.0
@@ -306,15 +596,22 @@ def _get_analysis_data(broker: DataBroker, scanner: HybridScanner, symbol: str, 
     # 4. Validate data
     if df_daily.empty or daily_metrics is None:
         print(f"⚠️ Could not retrieve or compute daily metrics for {symbol}.")
-        return None, None, None, None, None, None, None
+        return None
     if df_15min.empty:
         print(f"⚠️ No 15-minute candles found for {symbol}.")
-        return None, None, None, None, None, None, None
+        return None
 
-    return df_daily, daily_metrics, df_15min, nifty_df, rs_percentile, sector_rs, rs_source
+    return AnalysisData(
+        df_daily=df_daily,
+        daily_metrics=daily_metrics,
+        df_15min=df_15min,
+        nifty_df=nifty_df,
+        rs_percentile=rs_percentile,
+        sector_rs=sector_rs,
+        rs_source=rs_source,
+    )
 
-
-def _build_analysis_report(symbol: str, signal: dict, daily_metrics: dict, df_15min: pd.DataFrame, rs_percentile: float, sector_rs: float, rs_source: str, holding: bool) -> tuple[dict, pd.DataFrame]:
+def _build_analysis_report(symbol: str, signal: Optional[dict], daily_metrics: dict, df_15min: pd.DataFrame, rs_percentile: float, sector_rs: float, rs_source: str, holding: bool) -> tuple[dict, pd.DataFrame]:
     """Builds the data dictionary for the analysis report and the ranked DataFrame."""
     close = float(daily_metrics.get("Close", 0))
     ema50 = float(daily_metrics.get("EMA50", close) or close)
@@ -375,31 +672,35 @@ def run_analyze(symbol: str, explain: bool = False, holding: bool = False, force
     broker, scanner = build_runtime()
 
     # 1. Fetch all data
-    df_daily, daily_metrics, df_15min, nifty_df, rs_percentile, sector_rs, rs_source = _get_analysis_data(
+    analysis_data = _get_analysis_data(
         broker, scanner, symbol, force_refresh
     )
 
-    if df_daily is None:
+    if analysis_data is None:
         profiler.save_report()
         profiler.print_report()
         return pd.DataFrame()
 
     # 2. Run the final analysis with the combined data.
-    regime = scanner.compute_market_regime(nifty_df)
+    regime = scanner.compute_market_regime(analysis_data.nifty_df)
+    # This path always fetches df_15min live (see _get_analysis_data), so - unlike
+    # orchestrator.py's backtest path - there's no point_in_time to guard against here.
+    live_close = float(analysis_data.df_15min['Close'].iloc[-1]) if not analysis_data.df_15min.empty else None
     signal = scanner.scan(
         symbol,
-        df_daily,
-        df_15min,
-        rs_percentile=rs_percentile,
-        sector_rs=sector_rs,
+        analysis_data.df_daily,
+        analysis_data.df_15min,
+        rs_percentile=analysis_data.rs_percentile,
+        sector_rs=analysis_data.sector_rs,
         regime_mult=regime["multiplier"],
         strategy="SWING",
-        daily_metrics=daily_metrics,
+        daily_metrics=analysis_data.daily_metrics,
+        live_close=live_close,
     )
 
     # 3. Build and print the report
     report_data, ranked_df = _build_analysis_report(
-        symbol, signal, daily_metrics, df_15min, rs_percentile, sector_rs, rs_source, holding
+        symbol, signal, analysis_data.daily_metrics, analysis_data.df_15min, analysis_data.rs_percentile, analysis_data.sector_rs, analysis_data.rs_source, holding
     )
     _print_analysis_report(report_data)
 
@@ -412,7 +713,7 @@ def run_analyze(symbol: str, explain: bool = False, holding: bool = False, force
     return ranked_df
 
 
-def print_single_cache_status(strategy: str = None):
+def print_single_cache_status(strategy: Optional[str] = None):
     cache = DiscoveryCache()
     metadata = cache.get_cache_metadata(strategy=strategy)
     generated_time = metadata["generated_time"].isoformat(timespec="seconds") if metadata["generated_time"] else "N/A"
@@ -437,12 +738,12 @@ def print_single_cache_status(strategy: str = None):
     print(f"  Validity:        {validity}")
 
 
-def run_cache_status(strategy: str = None):
+def run_cache_status(strategy: Optional[str] = None):
     if strategy:
         print_single_cache_status(strategy=strategy)
         return
 
-    for index, strategy_name in enumerate(["BTST", "SWING", "GAP"]):
+    for index, strategy_name in enumerate(["BTST", "SWING", "GAP", "INTRADAY"]):
         if index:
             print()
         print_single_cache_status(strategy=strategy_name)
@@ -457,17 +758,25 @@ def run_profiler_report():
 def print_help():
     print("  python main.py status                                        # Run a system health check")
     print("Usage:")
-    print("  python main.py analyze SYMBOL [--explain] [--holding]         # analyze one stock only")
-    print("  python main.py discover [BTST|SWING|GAP] [--force-refresh]   # refresh discovery cache only")
-    print("  python main.py cache [BTST|SWING|GAP]                        # show discovery cache metadata")
+    print("  python main.py analyze SYMBOL [--explain] [--holding]        # analyze one stock only")
+    print("  python main.py discover [BTST|SWING|GAP|INTRADAY] [--force-refresh]   # refresh discovery cache only")
+    print("  python main.py cache [BTST|SWING|GAP|INTRADAY]               # show discovery cache metadata")
     print("  python main.py profiler                                      # show the last run's API profiler report")
-    print("  python main.py btst       # fast BTST scan from cached discovery")
-    print("  python main.py swing      # fast SWING scan from cached discovery")
-    print("  python main.py gap        # fast GAP scan from cached discovery")
-    print("  python main.py btst --force-refresh   # rebuild BTST cache, then scan")
-    print("  python main.py report     # create report from last displayed signals")
-    print("  python main.py invalidate [BTST|SWING|GAP] # delete discovery cache")
-
+    print("  python main.py btst                                          # fast BTST scan from cached discovery")
+    print("  python main.py swing                                         # fast SWING scan from cached discovery")
+    print("  python main.py gap                                           # fast GAP scan from cached discovery")
+    print("  python main.py intraday                                      # fast INTRADAY scan from cached discovery")
+    print("  python main.py live [INTRADAY|BTST]                          # run a continuous live scan loop")
+    print("  python main.py btst --force-refresh                          # rebuild BTST cache, then scan")
+    print("  python main.py report                                        # create report from last displayed signals")
+    print("  python main.py download-constituents [nifty500]              # Download historical index members to data/ folder")
+    print("  python main.py clean-constituents [nifty500]                 # De-duplicate and prune historical constituent files")
+    print(
+        "  python main.py emfb [--force-refresh]                        # run Emerging Momentum/Fresh Breakout scan (cached ~1hr; --force-refresh bypasses)"
+    )
+    print("  python main.py eod [--force-refresh]                         # run BTST+SWING+EMFB, print consolidated Top 5 report")
+    print("  python main.py invalidate [BTST|SWING|GAP|INTRADAY]          # delete discovery cache")
+    print("  python main.py refresh-beta [--force-refresh]                # recompute BETA_REGISTRY from live rolling beta (once/day; --force-refresh ignores that)")
 
 def parse_cli(argv):
     known_flags = {"--force-refresh", "--explain", "--holding"}
@@ -483,7 +792,6 @@ def parse_cli(argv):
 
 if __name__ == "__main__":
     from lifecycle_manager import shutdown_manager
-    from orchestrator import _background_workers
 
     positionals, flags, unknown_flags = parse_cli(sys.argv[1:])
     for flag in unknown_flags:
@@ -495,6 +803,19 @@ if __name__ == "__main__":
     try:
         if mode == "status":
             run_system_check()
+        elif mode == "download-constituents":
+            index_name = "nifty500"
+            if len(positionals) > 1:
+                index_name = positionals[1].strip().lower().replace(" ", "")
+            download_historical_constituents(index_name=index_name)
+        elif mode == "clean-constituents":
+            index_name = positionals[1].strip().lower().replace(" ", "") if len(positionals) > 1 else None
+            run_cleanup(index_name=index_name)
+        elif mode == "refresh-beta":
+            broker = DataBroker()
+            updated = broker.refresh_beta_registry(force=flags["force_refresh"])
+            print(f"✅ Refreshed BETA_REGISTRY for {updated} symbols." if updated else "ℹ️ BETA_REGISTRY refresh skipped (already run today) or failed - see logs.")
+            broker.close_session()
         elif mode == "discover":
             strategy = positionals[1].strip().upper() if len(positionals) > 1 else "BTST"
             run_discovery(strategy=strategy, force_refresh=flags["force_refresh"])
@@ -506,10 +827,17 @@ if __name__ == "__main__":
             run_cache_status(strategy=strategy)
         elif mode == "profiler":
             run_profiler_report()
-        elif mode in ["btst", "swing", "gap"]:
+        elif mode in ["btst", "swing", "gap", "intraday"]:
             run_execution(strategy=mode.upper(), force_refresh=flags["force_refresh"])
-            if _background_workers:
-                should_wait = True
+            should_wait = True
+        elif mode == "emfb":
+            from emfb import run_emfb_scan
+            run_emfb_scan(force_refresh=flags["force_refresh"])
+        elif mode == "eod":
+            run_eod()
+        elif mode == "live":
+            strategy = positionals[1].strip().upper() if len(positionals) > 1 else "INTRADAY"
+            run_live_scanner(strategy=strategy)
         elif mode == "report":
             run_report_only()
         elif mode == "invalidate":
@@ -529,8 +857,3 @@ if __name__ == "__main__":
         if not shutdown_manager.is_shutdown():
             # If shutdown wasn't already initiated by a signal, start it now.
             shutdown_manager.initiate_shutdown()
-        
-        # Wait for the background workers to finish.
-        if _background_workers:
-            for worker in _background_workers:
-                worker.join(timeout=10)
