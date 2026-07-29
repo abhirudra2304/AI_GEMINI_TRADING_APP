@@ -238,6 +238,16 @@ def execute_macro_discovery(broker: DataBroker, scanner: HybridScanner, strategy
     
     regime_analyzer = MarketRegime(broker, scanner, current_universe, discovered_df)
     regime_analyzer.calculate_regime()
+    if not point_in_time:
+        # This report (breadth, VIX, distribution days, sector leadership, a
+        # Full/Half Position/Wait/No-BTST recommendation) was already computed
+        # on every discovery run but never surfaced anywhere - every caller
+        # discarded regime_analyzer after receiving it. Surfacing it here
+        # covers every entry point (discover/btst/swing/eod/live) in one
+        # place instead of touching each call site. Skipped for point-in-time
+        # (backtest/historical-generation) runs, which call this in a loop
+        # across many dates and would otherwise flood the console.
+        regime_analyzer.print_report()
 
     cache.save_cache(discovered_df, top_execution_watchlist, strategy, regime)
     return top_execution_watchlist, discovered_df, regime_analyzer
