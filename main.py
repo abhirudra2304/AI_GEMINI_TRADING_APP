@@ -493,23 +493,23 @@ def explain_decision_score(row: pd.Series):
     sector_val = float(row.get("Sector_RS") or 0)
     adx_val = float(row.get("ADX") or 0)
 
-    # Cooled (inverted) values
+    # Cooled (inverted) values - Sector_RS is deliberately NOT cooled (see utils.py's
+    # add_decision_scores for why: sector rotation persists rather than mean-reverts).
     score_cool = 100 - score_val
     rs_cool = 100 - rs_val
-    sector_cool = 100 - sector_val
     adx_cool = 100 - (min(adx_val, 50.0) / 50.0 * 100)
 
     # Weighted components
     rs_part = rs_cool * 0.40
     score_part = score_cool * 0.35
-    sector_part = sector_cool * 0.15
+    sector_part = sector_val * 0.15
     adx_part = adx_cool * 0.10
     total = rs_part + score_part + sector_part + adx_part
 
-    print("\nDecision Score Explanation (Favors less-crowded setups)")
+    print("\nDecision Score Explanation (Favors less-crowded setups, but follows sector rotation)")
     print(f"  RS Pctl ({rs_val:.1f}):        (100 - {rs_val:.1f}) * 40% = {rs_part:.1f}")
     print(f"  Scanner Score ({score_val:.1f}):  (100 - {score_val:.1f}) * 35% = {score_part:.1f}")
-    print(f"  Sector RS ({sector_val:.1f}):    (100 - {sector_val:.1f}) * 15% = {sector_part:.1f}")
+    print(f"  Sector RS ({sector_val:.1f}):    {sector_val:.1f} * 15% = {sector_part:.1f}")
     print(f"  ADX ({adx_val:.1f}):            (100 - {min(adx_val, 50.0):.1f}/50*100) * 10% = {adx_part:.1f}")
     print("-" * 50)
     print(f"  Final Decision Score:  {total:.1f}")
