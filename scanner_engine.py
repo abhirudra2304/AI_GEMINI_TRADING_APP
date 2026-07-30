@@ -694,6 +694,18 @@ class HybridScanner(BaseScanner):
         regime_mult_clamped = max(0.5, min(1.0, regime_mult))
         quality_score = max(0, min(100, round(raw_score, 1)))
 
+        # Full per-component breakdown for every scored ticker - makes "why did X
+        # outscore Y despite worse RS/RSI/Vol_Ratio" answerable from logs alone,
+        # without re-deriving the formula by hand each time (see 2026-07-30
+        # COFORGE-vs-ALKEM investigation). Debug-level: not meant for normal
+        # terminal output, only pulled up when actually needed.
+        logger.debug(
+            "scan: %s score=%.1f (volume=%.1f, adx=%.1f, rs=%.1f, sector=%.1f, "
+            "breakout=%.1f, trend=%.1f, regime_mult=%.2f, raw=%.1f)",
+            symbol, quality_score, volume_score, adx_score, rs_score, sector_score,
+            breakout_score, trend_score, regime_mult_clamped, raw_score,
+        )
+
         beta = self.beta_registry.get(symbol.replace('-EQ', ''), 1.0)
         dynamic_multiplier = max(1.5, self.base_multiplier + (self.alpha * (beta - 1.0)))
 
