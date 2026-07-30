@@ -278,3 +278,73 @@ def test_earnings_analyzer_does_not_permanently_cache_unknown():
         analyzer.evaluate_risk('ANYSTOCK')
     assert mock_fetch.call_count == 2  # not short-circuited by a cached None
     assert 'ANYSTOCK' not in analyzer.earnings_cache
+
+
+def test_earnings_unknown_with_short_history_is_hard_vetoed():
+    """Regression guard for the new-ticker blind spot (2026-07-30): an
+    established stock with an UNKNOWN earnings date (thin analyst coverage,
+    e.g. CYIENTDLM) gets the soft "verify manually" flag - see
+    test_earnings_unknown_is_flagged_not_silently_safe. But a ticker with too
+    little price history to have earned that benefit of the doubt (a
+    genuinely new/recent listing) must be hard-vetoed instead, since
+    "probably no real event" isn't a safe assumption with no track record."""
+    analyzer = EarningsAnalyzer(danger_zone_days=5, new_listing_history_days=65)
+    with patch.object(analyzer, '_fetch_earnings_date', return_value=None):
+        short_history_result = analyzer.evaluate_risk('NEWSTOCK', history_days=60)
+        established_result = analyzer.evaluate_risk('OLDSTOCK', history_days=300)
+        unknown_history_result = analyzer.evaluate_risk('UNFETCHABLESTOCK', history_days=None)
+
+    assert "HIGH RISK" in short_history_result['Earnings_Risk']
+    assert "New/Recent Listing" in short_history_result['Earnings_Risk']
+
+    # The established-coverage-gap case must be unaffected - still soft-flagged.
+    assert "HIGH RISK" not in established_result['Earnings_Risk']
+    assert "UNKNOWN" in established_result['Earnings_Risk']
+
+    # history_days=None (price data missing/unfetchable) must not get *less*
+    # scrutiny than a ticker with confirmed short history - also hard-vetoed.
+    assert "HIGH RISK" in unknown_history_result['Earnings_Risk']
+    assert "New/Recent Listing" in unknown_history_result['Earnings_Risk']
+
+
+def test_scan_hard_vetoes_short_history_unknown_earnings():
+    """End-to-end check that scan() actually applies the new hard veto (not
+    just EarningsAnalyzer in isolation) and surfaces the distinct new-listing
+    message rather than the generic 'Earnings in N days' text, which would be
+    nonsensical here since there's no known earnings date at all."""
+    rows = 60  # above compute_daily_metrics' own 50-row floor, below the new 65-day threshold
+    closes = [100.0 + i for i in range(rows)]
+    daily = pd.DataFrame({
+        'Timestamp': pd.date_range(start='2023-08-01', periods=rows, freq='D'),
+        'Open': [c - 0.3 for c in closes],
+        'High': [c + 0.5 for c in closes],
+        'Low': [c - 1.0 for c in closes],
+        'Close': closes,
+        # Higher than _make_fixture()'s 500000: at this fixture's lower close
+        # prices (~100-160 vs. _make_fixture's ~100-400), 500000 would land
+        # Avg_Traded_Value_20d under the HIGH-liquidity hard filter's 100M
+        # threshold and get this signal silently dropped before ever reaching
+        # the earnings veto this test exists to check.
+        'Volume': [1000000] * rows,
+    })
+    _, df_15min = _make_fixture()
+
+    scanner = HybridScanner()
+    d_metrics = scanner.compute_daily_metrics(daily)
+    assert d_metrics is not None  # sanity check: 60 rows clears the 50-row floor
+
+    new_listing_unknown = {
+        "Earnings_Date": "Unknown", "Days_To_Earnings": 0,
+        "Earnings_Risk": "HIGH RISK 🛑 (New/Recent Listing - No Earnings History To Verify Safety)",
+    }
+    with patch.object(scanner.earnings_engine, 'evaluate_risk', return_value=new_listing_unknown):
+        signal = scanner.scan(
+            'NEWSTOCK-EQ', daily, df_15min,
+            rs_percentile=75.0, sector_rs=65.0, regime_mult=1.0,
+            strategy='SWING', daily_metrics=d_metrics,
+        )
+
+    assert signal['Execution_Recommendation'] == 'AVOID (EARNINGS)'
+    assert signal['Strength'] == 'EVENT RISK 🛑'
+    assert 'no earnings history' in signal['AI_Summary'].lower()
+    assert 'earnings in 0 days' not in signal['AI_Summary'].lower()  # not the generic days-based message

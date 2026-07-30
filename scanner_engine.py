@@ -818,14 +818,19 @@ class HybridScanner(BaseScanner):
         signal = self._apply_mtf_override(signal, df_daily, df_15min, rr_ratio)
 
         # --- EXECUTIVE VETO: EARNINGS RISK ANALYZER ---
-        # Fetch the risk profile using the cached manager
-        earnings_data = self.earnings_engine.evaluate_risk(symbol)
-        
+        # Fetch the risk profile using the cached manager. history_days lets
+        # evaluate_risk distinguish a genuinely new/recently-listed ticker (no
+        # track record to fall back on) from an established one with merely
+        # thin analyst coverage (the CYIENTDLM-class gap) - None (df_daily
+        # missing/empty) is treated as "too little history" too, not skipped.
+        history_days = len(df_daily) if df_daily is not None else None
+        earnings_data = self.earnings_engine.evaluate_risk(symbol, history_days=history_days)
+
         # Stamp the transparency fields so they show up in reports
         signal['Earnings_Date'] = earnings_data['Earnings_Date']
         signal['Days_To_Earnings'] = earnings_data['Days_To_Earnings']
         signal['Earnings_Risk'] = earnings_data['Earnings_Risk']
-        
+
         # Apply the Veto: block the signal if earnings are imminent, regardless of
         # strategy. BTST/SWING never carry 'BUY TODAY' (only GAP/INTRADAY do via
         # compute_intraday_execution_score), so gating on that value alone let
@@ -834,7 +839,10 @@ class HybridScanner(BaseScanner):
         if "HIGH RISK" in earnings_data['Earnings_Risk']:
             signal['Execution_Recommendation'] = 'AVOID (EARNINGS)'
             signal['Strength'] = 'EVENT RISK 🛑'
-            warning_msg = f"[🛑 VETO: Setup invalidated. Earnings in {earnings_data['Days_To_Earnings']} days. Avoid binary risk!] "
+            if "New/Recent Listing" in earnings_data['Earnings_Risk']:
+                warning_msg = "[🛑 VETO: New/recent listing with no earnings history - cannot verify earnings safety.] "
+            else:
+                warning_msg = f"[🛑 VETO: Setup invalidated. Earnings in {earnings_data['Days_To_Earnings']} days. Avoid binary risk!] "
             signal['AI_Summary'] = warning_msg + signal.get('AI_Summary', '')
         elif "UNKNOWN" in earnings_data['Earnings_Risk']:
             # Not a veto - the data source (Yahoo Finance) has no earnings date for
