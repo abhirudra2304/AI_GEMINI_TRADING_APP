@@ -345,6 +345,116 @@ class HybridScanner(BaseScanner):
             return f"Strong daily setup with price above VWAP, but execution quality is only {execution.get('Execution_Grade')}. Watch for stronger afternoon follow-through."
         return "Strong daily trend but weak intraday execution. Wait for better entry."
 
+    @staticmethod
+    def _same_bucket_history(df_15min: pd.DataFrame) -> tuple[Optional[pd.Series], Optional[pd.Series], Optional[Any]]:
+        """Shared setup for both bucketed-baseline methods below: naive
+        (tz-stripped) date/time Series aligned to df_15min, plus today's date.
+
+        Returns (dates, times, today) - each None if df_15min lacks a usable
+        Timestamp column, so callers can fall back without special-casing tz.
+        """
+        if df_15min is None or df_15min.empty or 'Timestamp' not in df_15min.columns:
+            return None, None, None
+        ts = df_15min['Timestamp']
+        ts_naive = ts.dt.tz_localize(None) if ts.dt.tz is not None else ts
+        dates = ts_naive.dt.date
+        times = ts_naive.dt.time
+        if dates.empty:
+            return None, None, None
+        return dates, times, dates.iloc[-1]
+
+    def _bucketed_volume_baseline(self, df_15min: pd.DataFrame, recent_slice: pd.DataFrame, lookback_days: int = 5) -> float:
+        """Same-time-of-day baseline for `recent_slice`'s candles: for each
+        candle's 15-min bucket (e.g. 12:45-13:00), the median volume other
+        prior trading sessions (never today) had in that same bucket over
+        the last `lookback_days` sessions, averaged across recent_slice's
+        buckets to stay comparable in scale to a mean-of-3-candles reading.
+
+        Replaces the old `iloc[:-3].tail(40).median()` baseline, which
+        blended candles from every time of day across multiple days with no
+        time-of-day alignment - since NSE intraday volume follows a U-shape
+        (heavy at open/close, quiet at midday), that baseline made Vol_Ratio
+        mechanically rise through the session for every stock regardless of
+        genuine relative volume (see 2026-07-30 investigation: every ticker's
+        Vol_Ratio roughly tripled to sextupled between a 12:57 and a 15:27
+        scan on the same day).
+
+        Args:
+            df_15min: Multi-day 15-min OHLCV, DatetimeIndex-free (Timestamp
+                column), sorted ascending.
+            recent_slice: The candles being evaluated (e.g. the last 3),
+                a sub-frame of df_15min.
+            lookback_days: Prior trading sessions to draw the baseline from.
+                Needs only 3-5 sessions of history, not a full historical
+                curve.
+
+        Returns:
+            0.0 if there's no usable Timestamp data or no prior-day
+            candles in any of recent_slice's buckets (e.g. a newly-listed
+            stock) - caller's existing expected-volume floor covers that.
+        """
+        dates, times, today = self._same_bucket_history(df_15min)
+        if dates is None or recent_slice.empty:
+            return 0.0
+
+        recent_ts = recent_slice['Timestamp']
+        recent_ts_naive = recent_ts.dt.tz_localize(None) if recent_ts.dt.tz is not None else recent_ts
+
+        bucket_medians = []
+        for bucket_time in recent_ts_naive.dt.time:
+            same_bucket = df_15min.loc[(times == bucket_time) & (dates != today), 'Volume']
+            if same_bucket.empty:
+                continue
+            bucket_medians.append(same_bucket.tail(lookback_days).median())
+
+        return float(pd.Series(bucket_medians).mean()) if bucket_medians else 0.0
+
+    def _bucketed_daily_volume_ratio(
+        self, df_15min: pd.DataFrame, today_volume_so_far: float, fallback_avg_volume_20d: float, lookback_days: int = 5
+    ) -> float:
+        """BTST's cumulative-volume-so-far ratio, normalized against the
+        median *cumulative* volume other recent sessions had reached by
+        this same time of day - not a full-day average, which mechanically
+        rises all session long since today_volume_so_far only grows while
+        Avg_Volume_20d (a full-day figure) stays fixed. Same root cause and
+        fix philosophy as `_bucketed_volume_baseline` above, applied to a
+        cumulative total instead of a windowed snapshot.
+
+        Falls back to `today_volume_so_far / fallback_avg_volume_20d` (the
+        original formula) when there's no usable intraday history to build
+        a same-time-of-day baseline from - e.g. a newly-listed stock.
+
+        Args:
+            df_15min: Multi-day 15-min OHLCV (same frame `scan()` already
+                has), used only to reconstruct prior sessions' cumulative
+                volume-by-this-time - never today's own candles.
+            today_volume_so_far: Today's cumulative volume
+                (daily_metrics['Volume'], still-forming today's bar).
+            fallback_avg_volume_20d: Original full-day-average baseline,
+                used verbatim when the bucketed baseline can't be built.
+            lookback_days: Prior trading sessions to draw the baseline from.
+
+        Returns:
+            1.0 (neutral) if fallback_avg_volume_20d is also unavailable.
+        """
+        fallback = (today_volume_so_far / fallback_avg_volume_20d) if fallback_avg_volume_20d else 1.0
+
+        dates, times, today = self._same_bucket_history(df_15min)
+        if dates is None:
+            return fallback
+
+        current_time = times.iloc[-1]
+        prior_dates = sorted(d for d in set(dates) if d != today)[-lookback_days:]
+        if not prior_dates:
+            return fallback
+
+        cumulative_by_day = [
+            df_15min.loc[(dates == d) & (times <= current_time), 'Volume'].sum()
+            for d in prior_dates
+        ]
+        baseline = float(pd.Series(cumulative_by_day).median())
+        return (today_volume_so_far / baseline) if baseline > 0 else fallback
+
     def _compute_btst_score(self, daily_metrics: Dict[str, Any], rs_percentile: float, sector_rs: float, vol_ratio: float) -> tuple[float, str]:
         """
         Computes a dedicated score for BTST that is less sensitive to intraday execution noise.
@@ -508,8 +618,9 @@ class HybridScanner(BaseScanner):
         expected_daily_shares = liquidity_val / cp if cp > 0 else 0
         expected_15m_vol = expected_daily_shares / 25 # Assuming ~25 15-min candles per day
         
-        recent_vol_avg = df_15min['Volume'].iloc[-3:].mean()
-        historical_median_vol = np.nan_to_num(df_15min['Volume'].iloc[:-3].tail(40).median())
+        recent_slice = df_15min.iloc[-3:]
+        recent_vol_avg = recent_slice['Volume'].mean()
+        historical_median_vol = np.nan_to_num(self._bucketed_volume_baseline(df_15min, recent_slice))
         
         # The baseline is the greater of the actual historical median or 20% of the expected volume
         baseline_vol = max(float(historical_median_vol), expected_15m_vol * 0.20)
@@ -555,9 +666,16 @@ class HybridScanner(BaseScanner):
         # Calculate Final Raw Score
         raw_score = volume_score + adx_score + rs_score + sector_score + breakout_score + trend_score
         
+        # regime_mult_clamped is applied to position sizing only (see `quantity`
+        # below), not to quality_score/tiering - redesigned 2026-07-30: multiplying
+        # a fixed regime dampening into the score before tiering made MODERATE+
+        # mathematically unreachable in weaker regimes (quality_score capped at
+        # raw_score_max * mult, e.g. exactly 50 in EXTREME_BEAR's 0.5x - precisely
+        # the old WEAK/MODERATE boundary), hiding genuinely strong setups instead
+        # of correctly grading them lower. Regime now affects how much to risk on
+        # a signal, not whether it's recognized as a good signal at all.
         regime_mult_clamped = max(0.5, min(1.0, regime_mult))
-        quality_score = raw_score * regime_mult_clamped
-        quality_score = max(0, min(100, round(quality_score, 1)))
+        quality_score = max(0, min(100, round(raw_score, 1)))
 
         beta = self.beta_registry.get(symbol.replace('-EQ', ''), 1.0)
         dynamic_multiplier = max(1.5, self.base_multiplier + (self.alpha * (beta - 1.0)))
@@ -583,18 +701,43 @@ class HybridScanner(BaseScanner):
         risk_reward = ((target_price - cp) / risk_per_share) if risk_per_share > 0 else 0
         ema50_distance = ((cp - ema50) / ema50) * 100 if ema50 else 0.0
         breakout_quality = 100 if is_breakout else (70 if is_near_high else 35)
-        
-        quantity = int(min(qty_risk, qty_cap))
+
+        # regime_mult_clamped now lands here instead of quality_score (see note
+        # above) - dampens position size in weaker regimes without hiding the
+        # underlying setup quality from tiering.
+        quantity = int(min(qty_risk, qty_cap) * regime_mult_clamped)
         capital_required = quantity * cp
 
         pct_from_p250 = ((cp - pivot_250) / pivot_250) * 100 if not pd.isna(pivot_250) and pivot_250 != 0 else np.nan
 
-        if quality_score >= 80:
-            signal_strength = "VERY STRONG 🚀"
-        elif quality_score >= 65:
-            signal_strength = "STRONG 🔥"
-        elif quality_score >= 50:
+        # VALIDATED_BEAR_REGIMES_ONLY (2026-07-30): thresholds re-derived against
+        # raw_score (pre-regime-multiply, see the redesign note above `quality_score`
+        # near `regime_mult_clamped`'s first use). Anchored on BEARISH_RECOVERY's own
+        # old-design tier proportions - the one regime where the old post-multiply
+        # design could reach every tier at all - via a 6-date/1154-point paired
+        # old/new-Vol_Ratio backtest, then validated to reproduce a similar (not
+        # identical) shape under EXTREME_BEAR: no tier is structurally unreachable
+        # anymore. Every date in that dataset was EXTREME_BEAR or BEARISH_RECOVERY -
+        # no BULLISH/NEUTRAL-regime data exists in the current cache to validate
+        # against; re-check both cutoffs the first time such data is available.
+        #
+        # STRONG+ is intentionally not split into STRONG/VERY STRONG - insufficient
+        # anchor data across available regimes (zero real examples in either regime
+        # to derive a split from). Split when BULLISH/NEUTRAL regime data becomes
+        # available in cache. VERY STRONG labels in reports come exclusively from
+        # the MTF intraday override (_apply_mtf_override), not from this threshold.
+        if quality_score >= 89.1:
+            signal_strength = "STRONG+ 🔥"
+            logger.debug(
+                "scan: %s tiered STRONG+ at quality_score=%.1f via the "
+                "VALIDATED_BEAR_REGIMES_ONLY 89.1 threshold.", symbol, quality_score,
+            )
+        elif quality_score >= 74.9:
             signal_strength = "MODERATE ⚡"
+            logger.debug(
+                "scan: %s tiered MODERATE at quality_score=%.1f via the "
+                "VALIDATED_BEAR_REGIMES_ONLY 74.9 threshold.", symbol, quality_score,
+            )
         else:
             signal_strength = "WEAK ⚠️"
 
@@ -616,7 +759,7 @@ class HybridScanner(BaseScanner):
         elif is_btst:
             # BTST uses a different, less intraday-sensitive scoring model.
             avg_volume_20d = d_metrics.get('Avg_Volume_20d', 0)
-            daily_vol_ratio = (d_metrics.get('Volume', 0) / avg_volume_20d) if avg_volume_20d else 1.0
+            daily_vol_ratio = self._bucketed_daily_volume_ratio(df_15min, d_metrics.get('Volume', 0), avg_volume_20d)
             btst_score, btst_reason = self._compute_btst_score(d_metrics, rs_percentile, sector_rs, daily_vol_ratio)
             # BTST has no intraday BUY TODAY/WATCH/WAIT verdict (it ranks by BTST_Score /
             # BTST_Final_Score instead), but every signal must carry Execution_Recommendation

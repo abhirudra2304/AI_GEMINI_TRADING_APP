@@ -46,7 +46,25 @@ def _make_fixture():
         'Close': closes,
         'Volume': [500000] * rows,
     })
-    df_15min = pd.DataFrame({
+    # Three prior days at the same 5 candle times as "today" below, so the
+    # bucketed volume-baseline helpers (_bucketed_volume_baseline /
+    # _bucketed_daily_volume_ratio) have same-time-of-day history to compare
+    # against instead of silently falling back to the expected-volume floor.
+    # 20 total rows stays under analyze_mtf_breakout's own len(df_15m) >= 21
+    # requirement, so the MTF-override path's behavior (short-circuits to a
+    # no-op below that threshold) is unaffected by this addition.
+    prior_days_15min = pd.DataFrame({
+        'Timestamp': pd.concat([
+            pd.Series(pd.date_range(start=f'2023-10-{day} 09:15', periods=5, freq='15min'))
+            for day in (25, 26, 27)
+        ], ignore_index=True),
+        'Open': [395.0, 395.5, 396.0, 396.2, 396.4] * 3,
+        'High': [395.6, 396.1, 396.3, 396.5, 396.8] * 3,
+        'Low': [394.8, 395.3, 395.8, 396.0, 396.2] * 3,
+        'Close': [395.5, 396.0, 396.2, 396.4, 396.6] * 3,
+        'Volume': [40000, 42000, 45000, 48000, 50000] * 3,
+    })
+    today_15min = pd.DataFrame({
         'Timestamp': pd.date_range(start='2023-10-28 09:15', periods=5, freq='15min'),
         'Open': [398.0, 398.5, 399.0, 399.2, 399.4],
         'High': [398.6, 399.1, 399.3, 399.5, 399.8],
@@ -54,6 +72,7 @@ def _make_fixture():
         'Close': [398.5, 399.0, 399.2, 399.4, 399.6],
         'Volume': [50000, 55000, 60000, 90000, 120000],
     })
+    df_15min = pd.concat([prior_days_15min, today_15min], ignore_index=True)
     return daily, df_15min
 
 
@@ -71,10 +90,26 @@ def _scan(strategy: str) -> dict:
 
 def test_btst_scoring_is_pinned():
     signal = _scan('BTST')
-    assert signal['Score'] == pytest.approx(78.6, abs=0.05)
-    assert signal['Strength'] == 'STRONG 🔥'
-    assert signal['BTST_Score'] == pytest.approx(74.42, abs=0.05)
-    assert signal['Vol_Ratio'] == pytest.approx(1.71, abs=0.01)
+    # Score/Vol_Ratio/BTST_Score pinned values updated 2026-07-30: Vol_Ratio now
+    # uses a bucketed same-time-of-day baseline (median volume in the same
+    # 15-min bucket over the last 3-5 prior sessions) instead of a time-blind
+    # tail(40) median, which mixed candles from every time of day across
+    # multiple days with no alignment - see scanner_engine.py's
+    # _bucketed_volume_baseline/_bucketed_daily_volume_ratio. The fixture's
+    # three added prior days (see _make_fixture) give the new baseline real
+    # same-bucket history instead of falling back to the expected-volume floor.
+    assert signal['Score'] == pytest.approx(80.4, abs=0.05)
+    # Strength pinned value updated 2026-07-30 (regime-multiply-before-tiering
+    # redesign): quality_score no longer has regime_mult_clamped applied before
+    # tiering (moved to `quantity` sizing instead - see scanner_engine.py), and
+    # STRONG/VERY STRONG merged into a single STRONG+ tier at raw_score>=89.1
+    # pending real BULLISH/NEUTRAL-regime anchor data. This fixture uses
+    # regime_mult=1.0, so quality_score is numerically unchanged (80.4) - only
+    # the tier boundaries moved, landing 80.4 in the merged MODERATE band
+    # [74.9, 89.1) instead of the old separate VERY STRONG band (>=80).
+    assert signal['Strength'] == 'MODERATE ⚡'
+    assert signal['BTST_Score'] == pytest.approx(80.53, abs=0.05)
+    assert signal['Vol_Ratio'] == pytest.approx(1.89, abs=0.01)
     assert signal['Breakout250'] == 'YES'
     assert signal['Stop'] == pytest.approx(396.75, abs=0.01)
     assert signal['Target'] == pytest.approx(402.38, abs=0.01)
@@ -85,28 +120,34 @@ def test_btst_scoring_is_pinned():
     # sector rotation persists rather than mean-reverts, so fading sector
     # leadership was the wrong call. sector_rs=65.0 in the fixture above shifts
     # Decision_Score by exactly +4.5 (= 65.0 * 0.15 - (100-65.0) * 0.15).
+    # Re-updated 2026-07-30 alongside the Score change above (score_cool feeds
+    # into Decision_Score too).
     ranked = add_decision_scores(pd.DataFrame([signal]))
-    assert ranked.iloc[0]['Decision_Score'] == pytest.approx(27.2, abs=0.05)
-    assert ranked.iloc[0]['BTST_Final_Score'] == pytest.approx(55.5, abs=0.05)
+    assert ranked.iloc[0]['Decision_Score'] == pytest.approx(26.6, abs=0.05)
+    assert ranked.iloc[0]['BTST_Final_Score'] == pytest.approx(59.0, abs=0.05)
 
 
 def test_swing_scoring_is_pinned():
     signal = _scan('SWING')
-    assert signal['Score'] == pytest.approx(78.6, abs=0.05)
-    assert signal['Strength'] == 'STRONG 🔥'
-    assert signal['Vol_Ratio'] == pytest.approx(1.71, abs=0.01)
+    # See test_btst_scoring_is_pinned above for why Score/Vol_Ratio changed 2026-07-30.
+    assert signal['Score'] == pytest.approx(80.4, abs=0.05)
+    # See test_btst_scoring_is_pinned above for why Strength changed 2026-07-30
+    # (regime-multiply-before-tiering redesign, STRONG/VERY STRONG merged).
+    assert signal['Strength'] == 'MODERATE ⚡'
+    assert signal['Vol_Ratio'] == pytest.approx(1.89, abs=0.01)
     assert signal['Breakout250'] == 'YES'
     assert signal['Stop'] == pytest.approx(396.0, abs=0.01)
     assert signal['Target'] == pytest.approx(405.0, abs=0.01)
     assert signal['Risk_Reward'] == pytest.approx(2.0, abs=0.01)
 
     # See test_btst_scoring_is_pinned above for why Decision_Score's pinned
-    # value changed (Sector_RS is no longer cooled/inverted, 2026-07-29).
+    # value changed (Sector_RS is no longer cooled/inverted, 2026-07-29;
+    # Score/Vol_Ratio bucketing, 2026-07-30).
     ranked = add_decision_scores(pd.DataFrame([signal]))
-    assert ranked.iloc[0]['Decision_Score'] == pytest.approx(27.2, abs=0.05)
+    assert ranked.iloc[0]['Decision_Score'] == pytest.approx(26.6, abs=0.05)
     # SWING carries no BTST_Score, so BTST_Final_Score falls back to the
     # Execution_Score-based legacy formula in add_decision_scores.
-    assert ranked.iloc[0]['BTST_Final_Score'] == pytest.approx(19.0, abs=0.05)
+    assert ranked.iloc[0]['BTST_Final_Score'] == pytest.approx(18.6, abs=0.05)
 
 
 def test_earnings_veto_applies_regardless_of_strategy():
