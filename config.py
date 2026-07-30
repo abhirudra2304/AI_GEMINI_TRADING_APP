@@ -28,37 +28,33 @@ class CacheConfig:
 class Universe:
     # Master list of stocks to be used by the discovery and scanning modules.
     TARGET_UNIVERSE = [
-    "AARTIIND", "ABB", "ACE", "ACMESOLAR", "ADANIGREEN", "ADANIPOWER", "AFCONS", "AIAENG", "ALKEM", "AMBER", "APARINDS", "APOLLO", "APOLLOHOSP", "ASIANPAINT", "ASTRAMICRO", "AUROPHARMA", "AXISBANK", "BAJAJFINSV", "BAJFINANCE", "BDL", "BEML", "BHARATFORG", "BORORENEW", "CGPOWER", "CIPLA", "CLEAN", "COCHINSHIP", "COFORGE", "CYIENT", "CYIENTDLM", "DATAPATTNS", "DEEPAKNTR", "DIVISLAB", "DIXON", "DMART", "EICHERMOT", "ELECON", "ENGINERSIN", "FINEORG", "FLUOROCHEM", "FORTIS", "GRSE", "HCLTECH", "HDFCBANK", "HFCL", "HGINFRA", "HINDUNILVR", "ICICIBANK", "IDEAFORGE", "INFY", "INOXWIND", "IRCON", "IRFC", "ITC", "JSWENERGY", "JUBLFOOD", "JWL", "JYOTICNC", "KAYNES", "KEI", "KIMS", "KNRCON", "KPIGREEN", "KPIL", "KPITTECH", "KSB", "LT", "LUPIN", "M&M", "MANKIND", "MARUTI", "MAXHEALTH", "MAZDOCK", "MCDOWELL-N", "MIDHANI", "MTARTECH", "NAVINFLUOR", "NBCC", "NCC", "NESTLEIND", "NETWEB", "NH", "NHPC", "NTPC", "OFSS", "PARAS", "PERSISTENT", "PGEL", "PIDILITIND", "PIIND", "PNCINFRA", "POLYCAB", "POWERGRID", "POWERINDIA", "PREMEXPLN", "PREMIERENE", "RAILTEL", "RELIANCE", "RVNL", "SCHNEIDER", "SIEMENS", "SJVN", "SKFINDIA", "SOLARINDS", "SRF", "STLTECH", "SUNPHARMA", "SUZLON", "SYRMA", "TAALTECH", "TANLA", "TATACHEM", "TATACOMM", "TATACONSUM", "TATAELXSI", "TECHM", "TEJASNET", "TEXRAIL", "THERMAX", "TIMKEN", "TITAGARH", "TITAN", "TORNTPHARM", "TRENT", "ULTRACEMCO", "VBL", "VINATIORGA", "WAAREEENER", "ZENTEC", "ZYDUSLIFE",
-    "HAL", "BEL", "UNIMECH", "ETERNAL", "KOTAKBANK", "SBIN", "PNBHOUSING", "TATAPOWER",
-    "SGEL", "EXIDEIND", "CUMMINSIND", "SOBHA", "ANANTRAJ", "DRREDDY", "VIJAYA",
-    # TECHNOLOGY & TELECOM
-    "ROUTE", "BHARTIARTL", "TCS",
-    "BSE", "MCX", "CDSL", "CAMS", "IREDA", "CONCOR", "INDHOTEL", "BHEL", "SONACOMS",
-    # PSU BANKS (added: leading sector rotation, previously uncovered)
-    "PNB", "BANKBARODA", "CANBK", "UNIONBANK", "INDIANB",
-    # METALS (added: sector not previously covered at all)
-    "TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "JINDALSTEL", "NATIONALUM", "SAIL",
-    # OIL & GAS (added: expands thin ENERGY coverage beyond RELIANCE)
-    "ONGC", "BPCL", "IOC", "OIL", "GAIL",
-    # AUTO (added: expands thin AUTO coverage)
-    "TMPV", "TMCV", "BAJAJ-AUTO", "HEROMOTOCO", "TVSMOTOR", "ASHOKLEY",
-    # CEMENT (added: expands thin CEMENT coverage beyond ULTRACEMCO)
-    "SHREECEM", "AMBUJACEM", "ACC", "DALBHARAT", "JKCEMENT",
-    # INSURANCE (added: previously uncovered)
-    "HDFCLIFE", "SBILIFE", "ICICIPRULI", "ICICIGI",
-    # Previously had BETA_REGISTRY entries but were never in TARGET_UNIVERSE
-    # (unused leftover data, not a scanning gap - see conversation for context).
-    "ANGELONE", "BLS", "DCBBANK", "GODFRYPHLP", "HINDCOPPER", "LTTS",
-    "MOSCHIP", "NUVAMA", "PSPPROJECT", "PTCIL", "PWL", "SARDAEN",
-    # --- High-Velocity BTST & Swing Candidates ---
-    # ZOMATO renamed to ETERNAL (already present above) - not duplicated here.
-    "RECLTD", "PFC", "OLECTRA", "JBMA", "TARIL", "VOLTAMP", "KALYANKJIL", "COALINDIA",
-    # --- AI, Semiconductors & Emerging Tech / other requested additions ---
-    # PBFINTECH -> POLICYBZR and JBMAUTO -> JBMA are current live tickers for the
-    # same companies. TRIL -> TARIL likewise (added above). ASMTEC has no
-    # confident match on the live exchange, so it's omitted rather than guessed.
-    "AZAD", "DCXINDIA", "360ONE", "MOTILALOFS", "ADANIPORTS",
-    "E2E", "RIR", "AFFLE", "RATEGAIN", "AVALON", "POLICYBZR",
+    "AARTIIND", "ABB", "ACE", "ACMESOLAR", "ADANIGREEN", "ADANIPOWER", "AFCONS", "AIAENG",
+    "ALKEM", "AMBER", "APARINDS", "APOLLO", "APOLLOHOSP", "ASIANPAINT", "ASTRAMICRO", "AUROPHARMA",
+    "AXISBANK", "BAJAJFINSV", "BAJFINANCE", "BDL", "BEML", "BHARATFORG", "BORORENEW", "CGPOWER",
+    "CIPLA", "CLEAN", "COCHINSHIP", "COFORGE", "CYIENT", "CYIENTDLM", "DATAPATTNS", "DEEPAKNTR",
+    "DIVISLAB", "DIXON", "DMART", "EICHERMOT", "ELECON", "ENGINERSIN", "FINEORG", "FLUOROCHEM",
+    "FORTIS", "GRSE", "HCLTECH", "HDFCBANK", "HFCL", "HGINFRA", "HINDUNILVR", "ICICIBANK",
+    "IDEAFORGE", "INFY", "INOXWIND", "IRCON", "IRFC", "ITC", "JSWENERGY", "JUBLFOOD",
+    "JWL", "JYOTICNC", "KAYNES", "KEI", "KIMS", "KNRCON", "KPIGREEN", "KPIL",
+    "KPITTECH", "KSB", "LT", "LUPIN", "M&M", "MANKIND", "MARUTI", "MAXHEALTH",
+    "MAZDOCK", "MCDOWELL-N", "MIDHANI", "MTARTECH", "NAVINFLUOR", "NBCC", "NCC", "NESTLEIND",
+    "NETWEB", "NH", "NHPC", "NTPC", "OFSS", "PARAS", "PERSISTENT", "PGEL",
+    "PIDILITIND", "PIIND", "PNCINFRA", "POLYCAB", "POWERGRID", "POWERINDIA", "PREMEXPLN", "PREMIERENE",
+    "RAILTEL", "RELIANCE", "RVNL", "SCHNEIDER", "SIEMENS", "SJVN", "SKFINDIA", "SOLARINDS",
+    "SRF", "STLTECH", "SUNPHARMA", "SUZLON", "SYRMA", "TAALTECH", "TANLA", "TATACHEM",
+    "TATACOMM", "TATACONSUM", "TATAELXSI", "TECHM", "TEJASNET", "TEXRAIL", "THERMAX", "TIMKEN",
+    "TITAGARH", "TITAN", "TORNTPHARM", "TRENT", "ULTRACEMCO", "VBL", "VINATIORGA", "WAAREEENER",
+    "ZENTEC", "ZYDUSLIFE", "HAL", "BEL", "UNIMECH", "ETERNAL", "KOTAKBANK", "SBIN",
+    "PNBHOUSING", "TATAPOWER", "SGEL", "EXIDEIND", "CUMMINSIND", "SOBHA", "ANANTRAJ", "DRREDDY",
+    "VIJAYA", "ROUTE", "BHARTIARTL", "TCS", "BSE", "MCX", "CDSL", "CAMS",
+    "IREDA", "CONCOR", "INDHOTEL", "BHEL", "SONACOMS", "PNB", "BANKBARODA", "CANBK",
+    "UNIONBANK", "INDIANB", "TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "JINDALSTEL", "NATIONALUM",
+    "SAIL", "ONGC", "BPCL", "IOC", "OIL", "GAIL", "TMPV", "TMCV",
+    "BAJAJ-AUTO", "HEROMOTOCO", "TVSMOTOR", "ASHOKLEY", "SHREECEM", "AMBUJACEM", "ACC", "DALBHARAT",
+    "JKCEMENT", "HDFCLIFE", "SBILIFE", "ICICIPRULI", "ICICIGI", "ANGELONE", "BLS", "DCBBANK",
+    "GODFRYPHLP", "HINDCOPPER", "LTTS", "MOSCHIP", "NUVAMA", "PSPPROJECT", "PTCIL", "PWL",
+    "SARDAEN", "RECLTD", "PFC", "OLECTRA", "JBMA", "TARIL", "VOLTAMP", "KALYANKJIL",
+    "COALINDIA", "S OMITTED RATHER THAN GUESSED.", ",",
 ]
 
     # Institutional Sector Mappings
@@ -252,6 +248,11 @@ class Discovery:
     # feeds the live/interactive scanners, not just a batch job) that a
     # large chunk of the universe is scoring off stale cached data.
     MIN_FRESH_DATA_FRACTION = 0.5
+    # Width of the confirmed-signal window tracked for top-N drop-reason
+    # logging (see orchestrator.py/cache.py's topn_history) - how many of the
+    # current run's top-ranked signals get persisted and diffed against the
+    # next same-strategy run.
+    TOP_N_TRACKED_FOR_DIFF = 10
 
 # --- Scanner Engine Settings ---
 class Scanner:

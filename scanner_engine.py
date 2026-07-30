@@ -573,7 +573,12 @@ class HybridScanner(BaseScanner):
              df_5min: Optional[pd.DataFrame] = None, live_close: Optional[float] = None) -> Optional[Dict[str, Any]]:
         """Runs the multi-factor scoring model and calculates position sizing."""
         d_metrics = daily_metrics if daily_metrics is not None else self.compute_daily_metrics(df_daily)
-        if d_metrics is None or len(df_15min) < 3: return None
+        if d_metrics is None or len(df_15min) < 3:
+            logger.debug(
+                "scan: %s hard-filtered - insufficient data (daily_metrics=%s, len(df_15min)=%d)",
+                symbol, "missing" if d_metrics is None else "ok", len(df_15min),
+            )
+            return None
 
         # Bulletproof .get() methods to prevent KeyErrors
         # `live_close` (the last 15m close, fetched fresh every scan cycle) takes
@@ -604,8 +609,20 @@ class HybridScanner(BaseScanner):
         liquidity_val = d_metrics.get('Avg_Traded_Value_20d', 0)
         liquidity_label = "HIGH" if liquidity_val > 100_000_000 else "LOW"
         
-        # Hard Filter
-        if liquidity_label == "LOW" or cp < ema50 or rs_percentile < config.Discovery.RS_PCT_THRESHOLD or rsi_val < config.Discovery.RSI_THRESHOLD:
+        # Hard Filter - each condition logged individually (debug) so a dropped
+        # ticker's exact rejection reason is traceable instead of a bare None
+        # (see orchestrator.py's top-N drop-reason diffing, 2026-07-30).
+        failed_filters = []
+        if liquidity_label == "LOW":
+            failed_filters.append("liquidity")
+        if cp < ema50:
+            failed_filters.append("trend (cp < ema50)")
+        if rs_percentile < config.Discovery.RS_PCT_THRESHOLD:
+            failed_filters.append(f"RS percentile ({rs_percentile:.1f} < {config.Discovery.RS_PCT_THRESHOLD})")
+        if rsi_val < config.Discovery.RSI_THRESHOLD:
+            failed_filters.append(f"RSI ({rsi_val:.1f} < {config.Discovery.RSI_THRESHOLD})")
+        if failed_filters:
+            logger.debug("scan: %s hard-filtered - failed: %s", symbol, ", ".join(failed_filters))
             return None
 
         strategy = strategy.upper()

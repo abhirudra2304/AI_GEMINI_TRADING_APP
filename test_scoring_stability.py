@@ -25,6 +25,8 @@ if project_root not in sys.path:
 
 from scanner_engine import HybridScanner
 from earnings_manager import EarningsAnalyzer
+from orchestrator import _log_topn_diff
+from cache import _topn_history_path
 from utils import add_decision_scores, install_and_import
 
 pytest = install_and_import('pytest')
@@ -348,3 +350,91 @@ def test_scan_hard_vetoes_short_history_unknown_earnings():
     assert signal['Strength'] == 'EVENT RISK 🛑'
     assert 'no earnings history' in signal['AI_Summary'].lower()
     assert 'earnings in 0 days' not in signal['AI_Summary'].lower()  # not the generic days-based message
+
+
+def test_topn_diff_attributes_phase2_drop_correctly(caplog):
+    """Regression guard for the disappearing-top-stock blind spot (2026-07-30):
+    a ticker present in run 1's top-N that fails a Phase 2 hard filter (e.g.
+    RS threshold) on run 2 - still in the discovery watchlist, but scan()
+    rejected it - must be logged as DROPPED with the correct attribution,
+    not silently vanish from the report."""
+    strategy = "TESTDROP"
+    history_path = _topn_history_path(strategy)
+    if os.path.exists(history_path):
+        os.remove(history_path)  # stale file from a previous failed run
+
+    try:
+        # --- Run 1: DROPTEST is a solid top signal, plus one filler ticker. ---
+        discovered_run1 = pd.DataFrame({'Symbol': ['DROPTEST', 'FILLER']})
+        signals_run1 = pd.DataFrame({
+            'Symbol': ['DROPTEST', 'FILLER'],
+            'Decision_Score': [72.0, 60.0],
+            'Strength': ['MODERATE ⚡', 'MODERATE ⚡'],
+            'Execution_Recommendation': ['N/A', 'N/A'],
+        })
+        with caplog.at_level('INFO'):
+            _log_topn_diff(signals_run1, discovered_run1, strategy, 'Decision_Score')
+        assert 'no prior baseline' in caplog.text.lower()
+        assert os.path.exists(history_path)
+
+        # --- Run 2: DROPTEST still in the discovery watchlist (Phase 1 kept
+        # it) but failed scan()'s RS-threshold hard filter (Phase 2), so it
+        # never made it into this run's confirmed signals at all. ---
+        caplog.clear()
+        discovered_run2 = pd.DataFrame({'Symbol': ['DROPTEST', 'FILLER']})
+        signals_run2 = pd.DataFrame({
+            'Symbol': ['FILLER'],
+            'Decision_Score': [61.0],
+            'Strength': ['MODERATE ⚡'],
+            'Execution_Recommendation': ['N/A'],
+        })
+        with caplog.at_level('INFO'):
+            _log_topn_diff(signals_run2, discovered_run2, strategy, 'Decision_Score')
+
+        assert 'DROPPED' in caplog.text
+        assert 'DROPTEST' in caplog.text
+        assert 'Failed Phase 2 confirmation scan' in caplog.text
+        # FILLER stayed in the top-N with only minor drift - must not be misreported as dropped/demoted.
+        assert 'FILLER' not in caplog.text.split('DROPPED:')[1].split('\n')[0]
+    finally:
+        if os.path.exists(history_path):
+            os.remove(history_path)
+
+
+def test_topn_diff_attributes_phase1_drop_correctly(caplog):
+    """A ticker missing from discovered_df entirely (Rank_Score fell below the
+    Phase 1 cutoff, or it failed discovery.py's own hard filter) must be
+    attributed to Phase 1, not conflated with a Phase 2 confirmation failure."""
+    strategy = "TESTDROP2"
+    history_path = _topn_history_path(strategy)
+    if os.path.exists(history_path):
+        os.remove(history_path)
+
+    try:
+        discovered_run1 = pd.DataFrame({'Symbol': ['DROPTEST', 'FILLER']})
+        signals_run1 = pd.DataFrame({
+            'Symbol': ['DROPTEST', 'FILLER'],
+            'Decision_Score': [72.0, 60.0],
+            'Strength': ['MODERATE ⚡', 'MODERATE ⚡'],
+            'Execution_Recommendation': ['N/A', 'N/A'],
+        })
+        with caplog.at_level('INFO'):
+            _log_topn_diff(signals_run1, discovered_run1, strategy, 'Decision_Score')
+
+        caplog.clear()
+        # DROPTEST isn't in this run's discovery watchlist at all.
+        discovered_run2 = pd.DataFrame({'Symbol': ['FILLER']})
+        signals_run2 = pd.DataFrame({
+            'Symbol': ['FILLER'],
+            'Decision_Score': [61.0],
+            'Strength': ['MODERATE ⚡'],
+            'Execution_Recommendation': ['N/A'],
+        })
+        with caplog.at_level('INFO'):
+            _log_topn_diff(signals_run2, discovered_run2, strategy, 'Decision_Score')
+
+        assert 'DROPTEST' in caplog.text
+        assert 'Dropped from discovery watchlist (Phase 1)' in caplog.text
+    finally:
+        if os.path.exists(history_path):
+            os.remove(history_path)
