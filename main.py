@@ -13,6 +13,7 @@ ensure_venv()
 
 import threading
 import subprocess
+import ctypes
 from datetime import datetime
 import time
 from dotenv import load_dotenv
@@ -790,8 +791,81 @@ def parse_cli(argv):
     return positionals, flags, unknown_flags
 
 
+INSTANCE_LOCK_PATH = os.path.join(project_root, "main.pid")
+
+
+def _pid_is_alive(pid: int) -> bool:
+    """Windows-safe liveness check - avoids adding a psutil dependency just for this.
+
+    OpenProcess returning a valid handle only means the process *object* still
+    exists, which can briefly remain true even after the process has exited
+    (e.g. while some other handle to it is still open) - so a successful
+    OpenProcess alone is not sufficient. GetExitCodeProcess must also be
+    checked against STILL_ACTIVE to confirm it's actually still running.
+
+    Also note: OpenProcess returns a 64-bit HANDLE; ctypes defaults an
+    undeclared restype to 32-bit c_int, which truncates the handle and can
+    make a live process read back as a null (dead) handle. restype/argtypes
+    must be set explicitly.
+    """
+    kernel32 = ctypes.windll.kernel32
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+    kernel32.GetExitCodeProcess.restype = ctypes.c_int
+    kernel32.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    STILL_ACTIVE = 259
+
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return False
+    try:
+        exit_code = ctypes.c_ulong(0)
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            return False
+        return exit_code.value == STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _acquire_instance_lock() -> None:
+    """
+    Ensures only one main.py process runs at a time, regardless of how it's
+    invoked (Task Scheduler, a manual terminal, or anything else) - see the
+    2026-07-31 incident where three concurrent main.py processes each paced
+    their own API calls independently, multiplying the real request rate
+    against AngelOne's rate limit. Must run before any other work (no API
+    calls, no scan) so a duplicate invocation is genuinely a no-op.
+    """
+    if os.path.exists(INSTANCE_LOCK_PATH):
+        try:
+            with open(INSTANCE_LOCK_PATH, "r") as f:
+                existing_pid = int(f.read().strip())
+        except (ValueError, OSError):
+            existing_pid = None
+
+        if existing_pid is not None and _pid_is_alive(existing_pid):
+            print(f"Another instance is already running (PID {existing_pid}), exiting.")
+            sys.exit(1)
+        # Stale lock (owning process is gone, or the file was unreadable) - fall through and overwrite it.
+
+    with open(INSTANCE_LOCK_PATH, "w") as f:
+        f.write(str(os.getpid()))
+
+    def _release_instance_lock():
+        try:
+            os.remove(INSTANCE_LOCK_PATH)
+        except OSError:
+            pass
+
+    shutdown_manager.register(_release_instance_lock)
+
+
 if __name__ == "__main__":
     from lifecycle_manager import shutdown_manager
+
+    _acquire_instance_lock()
 
     positionals, flags, unknown_flags = parse_cli(sys.argv[1:])
     for flag in unknown_flags:

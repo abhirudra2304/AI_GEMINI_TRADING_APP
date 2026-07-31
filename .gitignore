@@ -65,3 +65,5 @@ scan_reports/
 profiler_report.pkl
 profiler_stats.pkl
 pocket fm/
+
+main.pid
