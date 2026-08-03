@@ -898,6 +898,10 @@ class EMFBScanner(BaseScanner):
 
     def __init__(self):
         super().__init__()
+        # EMFBScanner is a direct BaseScanner subclass (a sibling of HybridScanner,
+        # not a subclass of it), so it doesn't inherit HybridScanner's earnings_engine -
+        # needed here for the same evaluate_risk() call compute_emfb_metrics makes.
+        self.earnings_engine = EarningsAnalyzer()
 
     def _compute_indicators(self, df: pd.DataFrame, prefix: str) -> pd.DataFrame:
         """Computes a standard set of indicators for a given timeframe."""
@@ -935,8 +939,20 @@ class EMFBScanner(BaseScanner):
         daily_metrics = self.compute_daily_metrics(df_daily)
         if not daily_metrics: return None
 
+        # --- Earnings Risk (see BaseScanner.scan's identical use of evaluate_risk) ---
+        # df_daily is already fetched above for indicators/RS, so history_days costs
+        # no extra API call. Stashed here (Stage 1) so rank_and_score_emfb (Stage 2)
+        # can annotate the Reason field without needing to re-derive it.
+        earnings_data = self.earnings_engine.evaluate_risk(symbol, history_days=len(df_daily))
+
         # --- Metric Calculation ---
-        metrics: Dict[str, Any] = {'Symbol': symbol, 'Sector': data.get('sector', 'OTHER')}
+        metrics: Dict[str, Any] = {
+            'Symbol': symbol,
+            'Sector': data.get('sector', 'OTHER'),
+            'Earnings_Date': earnings_data['Earnings_Date'],
+            'Days_To_Earnings': earnings_data['Days_To_Earnings'],
+            'Earnings_Risk': earnings_data['Earnings_Risk'],
+        }
 
         # Daily Metrics
         metrics.update({
@@ -1085,12 +1101,30 @@ class EMFBScanner(BaseScanner):
             score = row['EMFB_Score']
             confidence = "High" if score > 75 else ("Medium" if score > 60 else "Low")
 
+            # --- Earnings Risk Annotation (see BaseScanner.scan's identical veto text) ---
+            # Confidence stays a pure read of technical setup strength - earnings risk
+            # is surfaced via Reason's prefix and the explicit Earnings_Risk field
+            # instead, so downstream consumers can check Earnings_Risk directly rather
+            # than string-matching Reason or misreading Confidence as risk-adjusted.
+            earnings_risk = row.get('Earnings_Risk', '')
+            reason_prefix = ""
+            if "HIGH RISK" in earnings_risk:
+                if "New/Recent Listing" in earnings_risk:
+                    reason_prefix = "[🛑 VETO: New/recent listing with no earnings history - cannot verify earnings safety.] "
+                else:
+                    reason_prefix = f"[🛑 VETO: Earnings in {row.get('Days_To_Earnings', 0)} days. Avoid binary risk!] "
+            elif "UNKNOWN" in earnings_risk:
+                reason_prefix = "[❓ Earnings date unknown - verify manually before entry] "
+
             results.append({
                 'Symbol': row['Symbol'],
                 'Sector': row['Sector'],
                 'EMFB_Score': round(score, 1),
                 'Confidence': confidence,
-                'Reason': " | ".join(reasons),
+                'Reason': reason_prefix + " | ".join(reasons),
+                'Earnings_Date': row.get('Earnings_Date', 'Unknown'),
+                'Days_To_Earnings': row.get('Days_To_Earnings', 999),
+                'Earnings_Risk': earnings_risk,
                 'Trigger': round(close, 2),
                 'Stop': round(stop_loss_price, 2),
                 'Target': round(target_price, 2),
