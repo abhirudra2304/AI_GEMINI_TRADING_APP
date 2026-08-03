@@ -909,7 +909,10 @@ class EMFBScanner(BaseScanner):
         if ta:
             bbands = ta.bbands(df['Close'], length=20)
             if bbands is not None and not bbands.empty:
-                df[f'{prefix}_bband_width'] = (bbands['BBU_20_2.0'] - bbands['BBL_20_2.0']) / bbands['BBM_20_2.0']
+                bbu_col = next(c for c in bbands.columns if c.startswith('BBU_'))
+                bbl_col = next(c for c in bbands.columns if c.startswith('BBL_'))
+                bbm_col = next(c for c in bbands.columns if c.startswith('BBM_'))
+                df[f'{prefix}_bband_width'] = (bbands[bbu_col] - bbands[bbl_col]) / bbands[bbm_col]
         return df
 
     def compute_emfb_metrics(self, symbol: str, data: Dict[str, Any], nifty_df: pd.DataFrame,
