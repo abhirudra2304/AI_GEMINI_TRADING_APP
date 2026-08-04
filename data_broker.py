@@ -38,6 +38,15 @@ SmartWebSocketV2 = _smartwebsocket_module.SmartWebSocketV2
 from profiler import profiler
 from lifecycle_manager import shutdown_manager
 
+# Shared across every DataBroker instance in this process (main.py, emfb.py,
+# historical_generator.py, and pipeline_runner.py each construct their own
+# DataBroker) so the 1.1s spacing is actually enforced against the real
+# combined call rate to AngelOne, not just within a single instance - a
+# per-instance lock let concurrent instances each believe they were pacing
+# correctly while collectively exceeding the account's rate limit.
+_rate_limit_lock = threading.Lock()
+_last_api_call_time = datetime.min
+
 logger = logging.getLogger(__name__)
 
 # --- WebSocket Tick Aggregation ---
@@ -158,11 +167,9 @@ class DataBroker:
         self.api.timeout = 15  # Set an explicit network timeout to prevent indefinite SSL hangs
         self.last_refresh_time = datetime.min # Initialize to datetime.min to force initial session generation
         self.refresh_cooldown_seconds = 300 # 5 minutes cooldown
-        self.last_api_call_time = datetime.min
         self.jwt_token = None
         self.feed_token = None
         self.min_api_interval_seconds = 1.1 # Increased safety margin to avoid "exceeding access rate"
-        self.rate_limit_lock = threading.Lock()
         self.api_request_lock = threading.Lock()
         self.refresh_token = None
         # --- NEW WebSocket and Aggregator state ---
@@ -370,15 +377,18 @@ class DataBroker:
         return [symbol for symbol in universe if self.has_symbol(symbol)]
 
     def _enforce_api_rate_limit(self):
-        """Ensures the minimum interval between API calls is respected in a thread-safe manner."""
-        with self.rate_limit_lock:
+        """Ensures the minimum interval between API calls is respected in a thread-safe manner,
+        shared across every DataBroker instance in this process (see module-level
+        _rate_limit_lock/_last_api_call_time)."""
+        global _last_api_call_time
+        with _rate_limit_lock:
             wait_start_time = time.monotonic()
-            elapsed = (datetime.now() - self.last_api_call_time).total_seconds()
+            elapsed = (datetime.now() - _last_api_call_time).total_seconds()
             if elapsed < self.min_api_interval_seconds:
                 sleep_duration = self.min_api_interval_seconds - elapsed
                 profiler.log_timing('rate_limit_delay', sleep_duration)
                 time.sleep(sleep_duration)
-            self.last_api_call_time = datetime.now()
+            _last_api_call_time = datetime.now()
             queue_wait_duration = time.monotonic() - wait_start_time
             profiler.log_timing('queue_wait', queue_wait_duration)
 
@@ -540,7 +550,14 @@ class DataBroker:
                             # Next full calendar day - daily candles are one-per-day,
                             # so there's nothing "partial" about today's row once it exists.
                             start_date_for_api = (last_date + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-                            is_up_to_date = start_date_for_api.date() >= to_date.date()
+                            # Up-to-date means the cache's last row IS today's date, not
+                            # merely that the next day to fetch would be today - the old
+                            # `start_date_for_api.date() >= to_date.date()` check was true
+                            # whenever last_date was yesterday, silently skipping the fetch
+                            # for today's candle on every ticker whose cache was exactly one
+                            # day stale (see 2026-08-04 RS collapse: 191/204 tickers served
+                            # yesterday's cache as "current", NaN-ing their composite score).
+                            is_up_to_date = last_date.date() >= to_date.date()
                         else:  # ONE_HOUR
                             # Just past the last cached candle's own timestamp - unlike
                             # ONE_DAY there's no "start of next period" rounding needed,
@@ -580,7 +597,7 @@ class DataBroker:
                                 profiler.log_success()
                                 break
                             except Exception as e:
-                                if "429" in str(e) or "503" in str(e): profiler.log_error("RateLimit")
+                                if "429" in str(e) or "503" in str(e) or "exceeding access rate" in str(e).lower(): profiler.log_error("RateLimit")
                                 profiler.log_retry()
                                 if attempt < 3:
                                     wait_time = (2 ** attempt) + random.uniform(0, 1) # Exponential backoff
@@ -675,7 +692,7 @@ class DataBroker:
                 profiler.log_success()
                 break
             except Exception as e:
-                if "429" in str(e) or "503" in str(e): profiler.log_error("RateLimit")
+                if "429" in str(e) or "503" in str(e) or "exceeding access rate" in str(e).lower(): profiler.log_error("RateLimit")
                 profiler.log_retry()
                 logger.warning(f"Full fetch failed for {symbol} (Attempt {attempt+1}): {e}")
                 if attempt < 3:

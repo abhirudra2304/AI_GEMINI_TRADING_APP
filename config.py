@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 class AppConfig:
     # Number of parallel workers for I/O-bound tasks like API calls.
     # The DataBroker's rate limiter prevents overwhelming the API.
-    SAFE_API_WORKERS = 16
+    SAFE_API_WORKERS = 12
     # If True, prints detailed debug information instead of the clean report.
     DEBUG_REPORT = False
 
@@ -54,7 +54,7 @@ class Universe:
     "JKCEMENT", "HDFCLIFE", "SBILIFE", "ICICIPRULI", "ICICIGI", "ANGELONE", "BLS", "DCBBANK",
     "GODFRYPHLP", "HINDCOPPER", "LTTS", "MOSCHIP", "NUVAMA", "PSPPROJECT", "PTCIL", "PWL",
     "SARDAEN", "RECLTD", "PFC", "OLECTRA", "JBMA", "TARIL", "VOLTAMP", "KALYANKJIL",
-    "COALINDIA", "S OMITTED RATHER THAN GUESSED.", ",",
+    "COALINDIA",
 ]
 
     # Institutional Sector Mappings
