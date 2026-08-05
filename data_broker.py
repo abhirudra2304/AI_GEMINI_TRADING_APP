@@ -62,6 +62,50 @@ AGGREGATOR_INTERVALS = {
     '15MIN': 15,
 }
 
+# --- Staleness detection ---
+# General data-integrity guard for fetch_ohlcv(): flags (via df.attrs, not a
+# column - no schema change for any caller) any intraday candle whose last bar
+# is older than expected for its interval during market hours. Doesn't care
+# WHY it's stale (CAS auction, API lag, anything else) - it's a symptom check,
+# not a CAS-specific patch. See 2026-08 incident: fetch_ohlcv silently served a
+# frozen 15:10 candle for F&O stocks through the entire 15:15-15:35 CAS window
+# with no error or signal.
+_MARKET_OPEN_TIME = datetime.strptime("09:15", "%H:%M").time()
+_MARKET_CLOSE_TIME = datetime.strptime("15:30", "%H:%M").time()
+_STALENESS_GRACE_MINUTES = {
+    'FIVE_MINUTE': 5,
+    'FIFTEEN_MINUTE': 15,
+    'ONE_HOUR': 60,
+}
+
+
+def _flag_if_stale(df: pd.DataFrame, interval: str, symbol: str) -> pd.DataFrame:
+    """Stamps df.attrs['stale']=True if df's last candle is older than expected
+    for `interval` during market hours. ONE_DAY has no intraday staleness
+    concept and is left untouched."""
+    if df.empty:
+        return df
+    base_minutes = _STALENESS_GRACE_MINUTES.get(interval)
+    if base_minutes is None:
+        return df
+    now = datetime.now(config.MARKET_TZ)
+    if not (_MARKET_OPEN_TIME <= now.time() <= _MARKET_CLOSE_TIME):
+        return df
+    last_ts = df['Timestamp'].max()
+    if getattr(last_ts, 'tzinfo', None) is None:
+        last_ts = last_ts.tz_localize(config.MARKET_TZ)
+    age_minutes = (now - last_ts).total_seconds() / 60
+    grace_minutes = base_minutes + 3  # buffer for normal broker/processing lag
+    if age_minutes > grace_minutes:
+        logger.warning(
+            f"STALE DATA: {symbol} {interval} last candle at {last_ts} is {age_minutes:.1f}min old "
+            f"(expected <= {grace_minutes:.0f}min during market hours)."
+        )
+        df.attrs['stale'] = True
+        df.attrs['stale_age_minutes'] = age_minutes
+    return df
+
+
 def _scalar_to_float(value: Any) -> float:
     """
     Converts a pandas `.loc[...]` scalar cell to a plain float.
@@ -531,7 +575,7 @@ class DataBroker:
                 logger.debug(f"Loading fresh cache for {symbol} {interval}.")
                 df = pd.read_parquet(file_path)
                 profiler.log_cache_event('load')
-                return df
+                return _flag_if_stale(df, interval, symbol)
 
             # 2. Incremental update for stale ONE_DAY/ONE_HOUR cache. Fetches only
             # the candles newer than what's cached instead of redownloading the
@@ -568,7 +612,7 @@ class DataBroker:
                         if is_up_to_date:
                             logger.info(f"Historical cache for {symbol} is already up-to-date.")
                             os.utime(file_path, None)
-                            return cached_df
+                            return _flag_if_stale(cached_df, interval, symbol)
 
                         logger.info(f"Fetching new candles for {symbol} from {start_date_for_api.strftime('%Y-%m-%d %H:%M')}.")
                         from_date = start_date_for_api
@@ -638,18 +682,18 @@ class DataBroker:
                                 logger.info(f"No new candles found for {symbol}. Cache is current.")
                                 os.utime(file_path, None)
 
-                            return combined_df
+                            return _flag_if_stale(combined_df, interval, symbol)
                         elif fetch_failed:
                             # Don't touch the mtime here: doing so would re-arm the TTL and cause
                             # this stale cache to be served as "fresh" for another cache_ttl window
                             # to every future caller, not just this one - masking a real API/rate-limit
                             # failure as a confirmed up-to-date cache.
                             logger.error(f"Incremental update for {symbol} failed after retries; serving stale cache (last bar {last_date}) without refreshing its TTL.")
-                            return cached_df
+                            return _flag_if_stale(cached_df, interval, symbol)
                         else:
                             logger.info(f"No new candles downloaded for {symbol}. Cache is considered current.")
                             os.utime(file_path, None)
-                            return cached_df
+                            return _flag_if_stale(cached_df, interval, symbol)
                 except Exception as e:
                     logger.warning(f"Could not incrementally update cache for {symbol}. Performing a full refresh. Error: {e}")
                     pass
@@ -713,8 +757,8 @@ class DataBroker:
             # For full refresh, mimic the final output format
             if interval == 'ONE_DAY':
                  print(f"\n[Cache] Loaded 0, Downloaded {len(df)}, Saved {len(df)}")
-            return df
-            
+            return _flag_if_stale(df, interval, symbol)
+
         return pd.DataFrame()
 
     def fetch_daily_candles(self, symbol: str, days_back: int = 120) -> pd.DataFrame:
