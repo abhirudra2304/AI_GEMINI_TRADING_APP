@@ -16,19 +16,34 @@ from reporting import display_confirmation_results
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# NSE's Closing Auction Session (CAS) for F&O-eligible stocks runs 15:15-15:35;
+# fetch_ohlcv() only detects the resulting stale-candle symptom (see
+# data_broker.py's _flag_if_stale), it can't avoid it. This is the actual
+# avoidance: defer scanning F&O names until the auction print is available,
+# while non-F&O names (unaffected by CAS) still scan immediately.
+_CAS_WINDOW_START = datetime.strptime("15:15", "%H:%M").time()
+_CAS_WINDOW_END = datetime.strptime("15:35", "%H:%M").time()
+
+
+def _in_cas_window(now: datetime) -> bool:
+    market_time = now.astimezone(config.MARKET_TZ).time()
+    return _CAS_WINDOW_START <= market_time < _CAS_WINDOW_END
+
+
 def _scan_for_confirmation_signals(broker, scanner, watchlist, discovered_df, regime_mult, strategy, force_refresh, caller, point_in_time):
     """Scans a watchlist of stocks in parallel to find trading signals."""
     signals_triggered = []
 
     def scan_stock(stock):
         try:
-            if shutdown_manager.is_shutdown(): return None            
+            if shutdown_manager.is_shutdown(): return None
             # --- MODIFIED: Use the new live candle provider ---
             df_15min = broker.get_live_candles(stock, 'FIFTEEN_MINUTE')
             df_5min = pd.DataFrame()
             if strategy.upper() in ['BTST', 'GAP', 'INTRADAY']:
                 df_5min = broker.get_live_candles(stock, 'FIVE_MINUTE')
             # --- END MODIFICATION ---
+            is_stale = bool(df_15min.attrs.get('stale') or df_5min.attrs.get('stale'))
 
             if not df_15min.empty and stock in discovered_df['Symbol'].values:
                 s_row = discovered_df[discovered_df['Symbol'] == stock].iloc[0]
@@ -43,7 +58,7 @@ def _scan_for_confirmation_signals(broker, scanner, watchlist, discovered_df, re
                 # backtested signal's price/Stop/Target - leave live_close=None so
                 # scan() falls back to Discovery's point_in_time-bounded Close instead.
                 live_close = float(df_15min['Close'].iloc[-1]) if point_in_time is None else None
-                return scanner.scan(
+                signal = scanner.scan(
                     stock, df_daily, df_15min,
                     rs_percentile=s_row['RS_Pctl'],
                     sector_rs=s_row['Sector_RS'],
@@ -53,6 +68,11 @@ def _scan_for_confirmation_signals(broker, scanner, watchlist, discovered_df, re
                     df_5min=df_5min,
                     live_close=live_close,
                 )
+                # Surface data_broker.py's staleness flag (see fetch_ohlcv/_flag_if_stale)
+                # onto the signal itself, so it reaches the report instead of only the logs.
+                if signal is not None:
+                    signal['Data_Stale'] = is_stale
+                return signal
         except Exception as e:
             logger.error(f"Micro-scan error for {stock}: {e}")
         return None
@@ -164,9 +184,38 @@ def run_manual_scan(broker, scanner, watchlist, discovered_df, strategy: str = '
         nifty_df = broker.fetch_ohlcv('Nifty 50', 'ONE_DAY', 400, force_refresh=force_refresh, caller=caller, end_date=point_in_time)
         regime_mult = scanner.compute_market_regime(nifty_df)['multiplier']
 
-    signals_triggered = _scan_for_confirmation_signals(
-        broker, scanner, watchlist, discovered_df, regime_mult, strategy, force_refresh, caller, point_in_time
-    )
+    now = datetime.now(config.MARKET_TZ)
+    # point_in_time is set only for backtests/historical replay, which have no real
+    # wall-clock CAS window to wait out - never split/wait there. broker.fno_underlyings
+    # empty means scrip_master.json didn't load or had no NFO rows; without it we can't
+    # tell F&O from non-F&O, so fall back to the pre-existing unsplit behavior rather
+    # than blocking the whole watchlist on a wait we can't justify.
+    if point_in_time is None and _in_cas_window(now) and broker.fno_underlyings:
+        fno_watchlist = [s for s in watchlist if broker.is_fno_eligible(s)]
+        non_fno_watchlist = [s for s in watchlist if s not in fno_watchlist]
+        logger.info(
+            f"CAS window active ({now.strftime('%H:%M')}): scanning {len(non_fno_watchlist)} non-F&O "
+            f"names now, deferring {len(fno_watchlist)} F&O names until after 15:35 (post-auction)."
+        )
+        signals_triggered = _scan_for_confirmation_signals(
+            broker, scanner, non_fno_watchlist, discovered_df, regime_mult, strategy, force_refresh, caller, point_in_time
+        )
+        if fno_watchlist:
+            wait_seconds = max(
+                0.0,
+                (datetime.combine(now.date(), _CAS_WINDOW_END) - now.replace(tzinfo=None)).total_seconds(),
+            )
+            logger.info(f"Waiting {wait_seconds:.0f}s for the CAS auction to close before scanning {len(fno_watchlist)} F&O names...")
+            if shutdown_manager.shutdown_event.wait(timeout=wait_seconds):
+                logger.warning("Shutdown requested during CAS wait; skipping deferred F&O scan.")
+            else:
+                signals_triggered += _scan_for_confirmation_signals(
+                    broker, scanner, fno_watchlist, discovered_df, regime_mult, strategy, force_refresh, caller, point_in_time
+                )
+    else:
+        signals_triggered = _scan_for_confirmation_signals(
+            broker, scanner, watchlist, discovered_df, regime_mult, strategy, force_refresh, caller, point_in_time
+        )
     score_col = 'BTST_Final_Score' if strategy.upper() in ['BTST', 'GAP', 'INTRADAY'] else 'Decision_Score'
 
     if not signals_triggered:

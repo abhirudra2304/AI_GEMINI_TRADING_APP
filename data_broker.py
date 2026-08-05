@@ -202,7 +202,8 @@ class DataBroker:
         self.cache_dir = os.path.join(BASE_DIR, config.CacheConfig.HISTORICAL_DATA_DIR)
         self.token_map = pd.DataFrame()
         self.symbol_index = {}
-        
+        self.fno_underlyings: set = set()
+
         # 3. Load variables explicitly from the dynamic path
         load_dotenv(dotenv_path=dotenv_path)
         
@@ -232,14 +233,16 @@ class DataBroker:
         # 6. Read the JSON master layout using the absolute path mapping
         try:
             if os.path.exists(scrip_master_path):
-                self.token_map = pd.read_json(scrip_master_path)
-                if not self.token_map.empty:
-                    self.token_map = self.token_map[self.token_map['exch_seg'] == 'NSE']
+                full_scrip_df = pd.read_json(scrip_master_path)
+                if not full_scrip_df.empty:
+                    self.fno_underlyings = self._extract_fno_underlyings(full_scrip_df)
+                    self.token_map = full_scrip_df[full_scrip_df['exch_seg'] == 'NSE']
                     self._build_symbol_index()
         except Exception as e:
             logger.error(f"Failed to load scrip master: {e}")
             self.token_map = pd.DataFrame()
             self.symbol_index = {}
+            self.fno_underlyings = set()
 
         # 7. Load the lightweight symbol->token map for the rolling-beta pipeline
         # (see update_tokens.py / calculate_rolling_beta). Missing/stale is not
@@ -371,6 +374,29 @@ class DataBroker:
         normalized = normalized.replace('.', '')
         normalized = normalized.replace('&', 'AND')
         return normalized
+
+    @staticmethod
+    def _extract_fno_underlyings(full_scrip_df: pd.DataFrame) -> set:
+        """Derives the current F&O-eligible stock universe from scrip_master.json's
+        NFO-segment FUTSTK rows (one row per underlying per expiry) at load time,
+        instead of a hardcoded list - NSE's F&O eligibility list changes
+        periodically, and a static snapshot would drift out of date the same way
+        scrip_master.json itself already has (see its own file-age staleness,
+        tracked as a separate concern). This always reflects whatever is
+        currently in scrip_master.json, with no extra list to go stale on its own."""
+        if 'exch_seg' not in full_scrip_df.columns or 'instrumenttype' not in full_scrip_df.columns:
+            return set()
+        nfo_futstk = full_scrip_df[
+            (full_scrip_df['exch_seg'] == 'NFO') & (full_scrip_df['instrumenttype'] == 'FUTSTK')
+        ]
+        names = nfo_futstk['name'].dropna().unique()
+        return {n for n in names if isinstance(n, str) and 'NSETEST' not in n.upper()}
+
+    def is_fno_eligible(self, symbol: str) -> bool:
+        """True if `symbol` has NFO futures (i.e. is subject to the 15:15-15:35
+        CAS closing auction), per the F&O universe derived at session start."""
+        normalized = symbol.upper().replace('-EQ', '').replace('-BE', '').strip()
+        return normalized in self.fno_underlyings
 
     def _build_symbol_index(self):
         self.symbol_index = {}
