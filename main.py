@@ -234,15 +234,15 @@ def run_eod():
 
     _print_top5(
         "BTST PICKS", results.get('BTST', pd.DataFrame()), 'BTST_Final_Score',
-        ['Symbol', 'Sector', 'BTST_Final_Score', 'Strength', 'Trigger', 'Stop', 'Target', 'Risk_Reward'],
+        ['Symbol', 'Sector', 'BTST_Final_Score', 'Strength', 'Trigger', 'Stop', 'Target', 'Risk_Reward', 'Data_Stale'],
     )
     _print_top5(
         "SWING PICKS", results.get('SWING', pd.DataFrame()), 'Decision_Score',
-        ['Symbol', 'Sector', 'Decision_Score', 'Strength', 'Trigger', 'Stop', 'Target', 'Risk_Reward'],
+        ['Symbol', 'Sector', 'Decision_Score', 'Strength', 'Trigger', 'Stop', 'Target', 'Risk_Reward', 'Data_Stale'],
     )
     _print_top5(
         "EMERGING MOMENTUM (EMFB) PICKS", results.get('EMFB', pd.DataFrame()), 'EMFB_Score',
-        ['Symbol', 'Sector', 'EMFB_Score', 'Confidence', 'Trigger', 'Stop', 'Target'],
+        ['Symbol', 'Sector', 'EMFB_Score', 'Confidence', 'Trigger', 'Stop', 'Target', 'Data_Stale'],
     )
 
     stage_errors = results.get('_errors') or {}

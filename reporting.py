@@ -147,11 +147,11 @@ def export_eod_pdf(results: dict, filename: str, news_summary: Optional[str] = N
 
     sections = [
         ("BTST PICKS", results.get('BTST', pd.DataFrame()), 'BTST_Final_Score',
-         ['Symbol', 'Sector', 'BTST_Final_Score', 'Strength', 'Trigger', 'Stop', 'Target', 'Risk_Reward']),
+         ['Symbol', 'Sector', 'BTST_Final_Score', 'Strength', 'Trigger', 'Stop', 'Target', 'Risk_Reward', 'Data_Stale']),
         ("SWING PICKS", results.get('SWING', pd.DataFrame()), 'Decision_Score',
-         ['Symbol', 'Sector', 'Decision_Score', 'Strength', 'Trigger', 'Stop', 'Target', 'Risk_Reward']),
+         ['Symbol', 'Sector', 'Decision_Score', 'Strength', 'Trigger', 'Stop', 'Target', 'Risk_Reward', 'Data_Stale']),
         ("EMERGING MOMENTUM (EMFB) PICKS", results.get('EMFB', pd.DataFrame()), 'EMFB_Score',
-         ['Symbol', 'Sector', 'EMFB_Score', 'Confidence', 'Trigger', 'Stop', 'Target']),
+         ['Symbol', 'Sector', 'EMFB_Score', 'Confidence', 'Trigger', 'Stop', 'Target', 'Data_Stale']),
     ]
 
     for title, df, score_col, cols in sections:
