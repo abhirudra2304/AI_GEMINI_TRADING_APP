@@ -23,6 +23,96 @@ from reporting import format_terminal_table
 
 logger = logging.getLogger(__name__)
 
+
+def _augment_with_institutional_score(discovered_df: pd.DataFrame) -> pd.DataFrame:
+    """Adds an informational Institutional_Score column (0-100) to
+    discovered_df, sourced from institutional_flow.py (an IAS plug-in
+    module) using real NSE bhavcopy delivery data via nse_delivery_feed.py.
+
+    Purely additive and read-only: never used in Rank_Score, sorting, or any
+    filter, and this is the ONLY thing this function does to discovered_df -
+    every other column and the row order are untouched. Validated against
+    one month of real historical data (2026-08-09 session): Spearman rank
+    correlation with 3-5 day forward returns was ~0, but stocks in the top
+    quintile of the score beat the bottom quintile on 65-70% of days - a
+    real but not yet individually-reliable signal. Stays informational-only
+    (not wired into ranking/filtering) until it has 4-6+ weeks of real
+    running history to judge - see SESSION_NOTES.md.
+
+    Inherently a T-1 (lagged) indicator: NSE's bhavcopy for "today" isn't
+    published until well after close, so this always reflects the most
+    recent already-published trading day, never the live session.
+
+    Failure policy: this must never break Discovery's existing output. Any
+    problem - IAS modules unavailable, NSE bhavcopy unreachable, a holiday
+    with no published file, an unexpected shape/error inside the engine -
+    is logged and leaves Institutional_Score as NaN (all rows, or just the
+    symbols affected), not raised. Both IAS imports below are local and
+    wrapped in the same try/except for the same reason: an import-time
+    error inside institutional_flow.py/nse_delivery_feed.py must not be
+    able to crash `import discovery` for every other caller (main.py,
+    orchestrator.py, ...), only disable this one optional column.
+    """
+    discovered_df = discovered_df.copy()
+    discovered_df['Institutional_Score'] = float('nan')
+
+    feed = None
+    try:
+        from nse_delivery_feed import NSEDeliveryFeed
+        from institutional_flow import InstitutionalFlowEngine
+
+        symbols = discovered_df['Symbol'].tolist()
+        feed = NSEDeliveryFeed()
+        history = feed.fetch_delivery_history(symbols, trading_days=1)
+        if history.empty:
+            logger.warning("Institutional_Score skipped: no recent NSE bhavcopy available.")
+            return discovered_df
+        target_date = history.index[0]
+
+        engine_data = {}
+        for _, row in discovered_df.iterrows():
+            symbol = row['Symbol']
+            daily_df = row.get('_Daily_DF')
+            if daily_df is None or daily_df.empty:
+                continue
+            df = daily_df.copy()
+            df['_d'] = pd.to_datetime(df['Timestamp']).dt.tz_localize(None).dt.normalize()
+            df = df.drop_duplicates(subset='_d').set_index('_d').sort_index()
+            df['DeliveryVolume'] = 0.0
+            if target_date in df.index and symbol in history.columns:
+                df.loc[target_date, 'DeliveryVolume'] = history.loc[target_date, symbol]
+            engine_data[symbol] = df
+
+        if not engine_data:
+            logger.warning("Institutional_Score skipped: no usable daily history for any symbol.")
+            return discovered_df
+
+        engine = InstitutionalFlowEngine(engine_data)
+        rvol = engine.calculate_rvol()
+        delivery_pct = engine.calculate_delivery_percent()
+        closing_range = engine.calculate_closing_range()
+        institutional_score = engine.calculate_institutional_score(rvol, delivery_pct, closing_range)
+
+        if target_date not in institutional_score.index:
+            logger.warning(f"Institutional_Score skipped: {target_date.date()} not present in computed output.")
+            return discovered_df
+
+        scores = institutional_score.loc[target_date]
+        discovered_df['Institutional_Score'] = discovered_df['Symbol'].map(scores)
+        logger.info(
+            f"Institutional_Score computed for {scores.notna().sum()}/{len(discovered_df)} "
+            f"symbols (as of {target_date.date()})."
+        )
+    except Exception as e:
+        logger.warning(f"Institutional_Score skipped due to an error: {e}", exc_info=True)
+        discovered_df['Institutional_Score'] = float('nan')
+    finally:
+        if feed is not None:
+            feed.close()
+
+    return discovered_df
+
+
 def get_universe_returns(broker, universe, lookback_days: int = 90, force_refresh: bool = False, caller: str = "Unknown", end_date: Optional[datetime] = None):
     returns = {}
     total = len(universe)
@@ -234,6 +324,14 @@ def execute_macro_discovery(broker: DataBroker, scanner: HybridScanner, strategy
     if discovered_df.empty: return [], pd.DataFrame(), None
 
     discovered_df = discovered_df.sort_values(by='Rank_Score', ascending=False)
+
+    if not point_in_time:
+        # Informational-only IAS field, not part of Rank_Score/sorting/filtering -
+        # see _augment_with_institutional_score's docstring. Skipped for
+        # backtests/historical runs (point_in_time set): it's a live NSE fetch
+        # with no point-in-time concept, and hasn't been validated for replay use.
+        discovered_df = _augment_with_institutional_score(discovered_df)
+
     top_execution_watchlist = discovered_df.head(config.Discovery.TOP_N_WATCHLIST)['Symbol'].tolist()
     
     regime_analyzer = MarketRegime(broker, scanner, current_universe, discovered_df)
