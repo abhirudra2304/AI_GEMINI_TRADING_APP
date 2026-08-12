@@ -46,7 +46,10 @@ class DataBroker:
         self.last_api_call_time = datetime.min
         self.jwt_token = None
         self.feed_token = None
-        self.min_api_interval_seconds = 1.1 # Increased safety margin to avoid "exceeding access rate"
+        self.min_api_interval_seconds = 1.8 # Bumped from 1.1: that spacing still triggered AB1021 rate-limit
+        # rejections under load (2026-08-12 prewarm/momentum runs), forcing expensive exponential-backoff
+        # retries (up to ~15s/call across 4 attempts) that were the actual cause of 20+ minute scan times -
+        # paying more up front here is cheaper than paying retries downstream.
         self.rate_limit_lock = threading.Lock()
         self.api_request_lock = threading.Lock()
         self.refresh_token = None
