@@ -4,12 +4,17 @@
 
 **Status:** ⚠️ REQUIRES IMMEDIATE ACTION
 
-The `.env` file contains sensitive credentials that are now visible in the git history:
-- `ANGEL_API_KEY=zCO5rJcV`
-- `ANGEL_CLIENT_CODE=A305502`
-- `ANGEL_PASSWORD=2182`
-- `ANGEL_TOTP_KEY=M4UBZUO7VJDABZULIIYVYXJHRQ`
-- `GEMINI_API_KEY=AIzaSyDnTmYGCZt5pmK2f0Eq2axamRkW4J9EQO4`
+The `.env` file contained sensitive credentials that were visible in git history:
+- `ANGEL_API_KEY`
+- `ANGEL_CLIENT_CODE`
+- `ANGEL_PASSWORD`
+- `ANGEL_TOTP_KEY`
+- `GEMINI_API_KEY`
+
+**Note:** The actual credential values were previously included in this report,
+which re-exposed them in git history a second time. They have been redacted
+here. Treat all five values above as compromised regardless of redaction —
+rotate them immediately if this has not already been done.
 
 ### Actions Required:
 1. **IMMEDIATELY revoke all credentials** on Angel One and Google Cloud Console
