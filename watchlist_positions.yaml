@@ -1,0 +1,26 @@
+# Configuration for momentum_alert.py
+#
+# Watches user-held positions for the "distribution" signature - price
+# breaking below its EMA20 WHILE volume expands - rather than flagging on
+# ordinary single-day red-candle noise. Deliberately requires BOTH
+# conditions together: on 2026-08-19, a market-wide red day (Nifty -0.41%)
+# saw every held position dip on normal-to-light volume while still holding
+# EMA20 - a single-condition trigger (price down, or volume up alone) would
+# have false-alarmed on that day. This file is the only thing you need to
+# edit to add/remove positions - no code changes required.
+
+watchlist:
+  - HAL
+  - ZENTEC
+  - SOLARINDS
+  - MCX
+  - DATAPATTNS
+  - DIXON
+
+# Volume must be at least this multiple of its 20-day average, together with
+# an EMA20 break, before a symbol is flagged. Below this, an EMA20 dip on
+# quiet volume is treated as ordinary noise, not a real momentum drop.
+volume_ratio_threshold: 1.3
+
+# Daily candle lookback used to compute EMA20 and the 20-day volume average.
+lookback_days: 40

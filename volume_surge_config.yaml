@@ -1,0 +1,36 @@
+# Configuration for volume_surge_scanner.py
+#
+# Detects stocks with an unusual volume+price move TODAY vs their own
+# trailing baseline - market-wide (every EQ-series NSE symbol via
+# bhavcopy), not limited to the curated 219-name scan universe. Built
+# 2026-08-11 after MCX's real catalyst (a Jefferies upgrade) turned out to
+# have zero NSE filing behind it - a pure company-filing monitor would
+# never have caught it. This is the mechanical detection layer; the
+# expensive "why is this moving" investigation (web search for
+# news/analyst action) is done by Claude directly for the top candidates
+# that also have no NSE filing explaining them - see NEEDS_INVESTIGATION
+# in the output.
+
+# A symbol must clear BOTH thresholds to be flagged - volume alone flags
+# too much noise (illiquid names spike on nothing), price alone flags too
+# much noise (normal daily moves). Both together is a real signal.
+min_volume_ratio: 3.0
+min_price_move_pct: 3.0
+
+# Liquidity floor (today's turnover, Rs Cr) - excludes illiquid names
+# where a tiny absolute volume spike produces a huge ratio but isn't
+# tradeable at any real size.
+min_turnover_cr: 10.0
+
+# Trading days of history for the baseline average (matches
+# universe_fitness.py's philosophy: enough for a real trailing average,
+# not so much it's slow to backfill).
+baseline_trading_days: 20
+
+# How many surge candidates to include in the full report.
+report_top_n: 30
+
+# How many of the top (by volume ratio) candidates get flagged for the
+# expensive investigation step (web search), among those with no NSE
+# filing already explaining the move. User-set 2026-08-11.
+investigate_top_n: 10

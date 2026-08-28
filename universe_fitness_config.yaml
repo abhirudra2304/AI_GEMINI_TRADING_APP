@@ -1,0 +1,50 @@
+# Configuration for universe_fitness.py
+#
+# Trading-fitness thresholds. The guiding principle (user directive,
+# 2026-08-07): the goal is SHORT-TERM TRADING (BTST / 1-2 week swing), NOT
+# long-term investment. A stock being an excellent long-term hold does NOT
+# make it fit to trade - a liquid, high-quality blue-chip that drifts ~1%
+# a week has no range to capture in a 1-2 week window and can't clear
+# costs+risk. So ATR% (range) is treated as a REQUIREMENT, and low
+# volatility is PENALIZED, not rewarded - the opposite of a normal quality
+# screen.
+
+# --- Liquidity (20-day average traded value, in Rs Cr) ---
+# BTST is an overnight hold that must be exited cleanly at the next open -
+# it needs materially more liquidity than a multi-day swing that can be
+# scaled out of over sessions.
+min_turnover_cr_btst: 50.0
+min_turnover_cr_swing: 20.0
+
+# --- Range / ATR% (14-day ATR as % of price) - the trading-fitness core ---
+# Below min_atr_pct: TOO SLOW. Doesn't move enough for a 1-2 week trade to
+#   be worth the risk, no matter how good the company is long-term. This is
+#   where slow blue-chips get correctly excluded.
+# min..ideal_low: tradeable but on the sluggish side.
+# ideal_low..ideal_high: the sweet spot for swing/BTST.
+# ideal_high..max: tradeable but hot - tighten size.
+# Above max_atr_pct: TOO HOT. Overnight gap/whipsaw risk too high to hold,
+#   especially for BTST.
+min_atr_pct: 1.8
+ideal_atr_low: 2.5
+ideal_atr_high: 6.0
+max_atr_pct: 9.0
+
+# --- Trend participation (Minervini-lite Stage 2) ---
+# How far below the 52-week high a name may sit and still count as
+# "participating" in the current up-move, and how far above its 52-week low
+# it must be (filters out falling-knife/basing names that aren't trending).
+max_pct_below_52w_high: 25.0
+min_pct_above_52w_low: 30.0
+
+# --- Composite score weights (sum to 100) ---
+# ATR carries the most weight deliberately - it's the axis that most
+# separates "tradeable" from "good company, dead chart".
+weight_atr: 40
+weight_liquidity: 25
+weight_trend: 25
+weight_fno: 10
+
+# Daily history to fetch per symbol (needs >=200 sessions for EMA200 +
+# 52-week high/low; 300 calendar days ~= 205-210 trading sessions).
+history_days: 320

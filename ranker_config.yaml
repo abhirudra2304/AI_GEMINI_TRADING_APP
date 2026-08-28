@@ -1,0 +1,47 @@
+# Configuration for final_ranker.py (AdaptiveRanker)
+#
+# All weights, sector multiplier semantics, and base position sizes used by
+# FinalRanker are sourced from this file — nothing is hardcoded in
+# final_ranker.py. If this file is missing or malformed, AdaptiveRanker
+# falls back to an equivalent built-in default (see
+# RankerConfig._default_config_dict in final_ranker.py) and logs a warning;
+# it never crashes on a bad/missing config.
+
+# Reference stop-loss (%) used as the baseline for position-size scaling.
+# A stock whose risk_reward_pct (distance to its logical stop) is wider
+# than this gets scaled down so portfolio heat stays roughly constant;
+# narrower stops are not scaled up beyond base_position_scale.
+standard_stop_pct: 5.0
+
+# Blend ratios for the two derived composite outputs. Each pair should sum
+# to 1.0.
+blend_weights:
+  probability_alpha_weight: 0.7
+  probability_market_confidence_weight: 0.3
+  system_confidence_breakout_weight: 0.5
+  system_confidence_market_weight: 0.5
+
+# Regime-specific factor weights. weight_rs + weight_inst_flow +
+# weight_breakout should sum to 1.0 within each regime so alpha_score
+# lands on a clean 0-100 scale before the sector multiplier is applied.
+regimes:
+  TRENDING_BULL:
+    weight_rs: 0.40
+    weight_inst_flow: 0.30
+    weight_breakout: 0.30
+    base_position_scale: 1.0
+    max_stop_loss_pct: 8.0
+
+  SIDEWAYS:
+    weight_rs: 0.30
+    weight_inst_flow: 0.30
+    weight_breakout: 0.40
+    base_position_scale: 0.5
+    max_stop_loss_pct: 6.0
+
+  BEAR:
+    weight_rs: 0.20
+    weight_inst_flow: 0.20
+    weight_breakout: 0.60
+    base_position_scale: 0.25
+    max_stop_loss_pct: 4.0

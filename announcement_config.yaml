@@ -1,0 +1,51 @@
+# Configuration for nse_announcements.py
+#
+# NSE's corporate-announcements feed already categorizes every disclosure
+# via its own 'desc' field (confirmed 2026-08-07 against a full day's
+# market-wide feed - ~50 distinct category values seen, e.g. "Bagging/
+# Receiving of orders/contracts", "Credit Rating", "Acquisition"). That
+# means materiality classification here is a lookup against NSE's own
+# taxonomy, not fuzzy keyword matching on free text - far more reliable.
+#
+# Tiers are deliberately conservative: HIGH means "this category is
+# usually genuinely price-relevant," not "this specific announcement is
+# definitely material" - the attachment text/PDF still needs a human (or a
+# follow-up LLM read) to judge magnitude. This tier is a noise filter, not
+# a verdict.
+
+high_materiality_categories:
+  - "Bagging/Receiving of orders/contracts"
+  - "Acquisition"
+  - "Sale or disposal"
+  - "Capacity addition"
+  - "Adoption of new line(s) of business"
+  - "Arrangements for strategic, technical, manufacturing, or marketing tie up"
+  - "Disclosure of material issue"
+  - "Credit Rating- Revision"
+  - "Closure of operations"
+  - "Change in Management"
+  - "Rumour Verification - Regulation 30(11)"
+  - "News Verification"
+  - "Spurt in Volume"
+  - "Price movement"
+  - "Action(s) taken or orders passed"
+  - "Action(s) initiated or orders passed"
+  - "Pendency of Litigation(s)/dispute(s) or the outcome impacting the Company"
+
+medium_materiality_categories:
+  - "Agreements"
+  - "Credit Rating"
+  - "Credit Rating- Others"
+  - "Preferential issue"
+  - "Qualified Institutional Placement"
+  - "Stock split"
+  - "Change in Director(s)"
+  - "Resignation of Director/KMP/SMP"
+  - "Giving guarantees/indemnity/ becoming a surety for third party"
+
+# Everything else (General Updates, Investor Presentation, Press Release,
+# ESOP/ESOS/ESPS, Trading Window, Committee Meeting Updates, Outcome of
+# Board Meeting [already covered by earnings_verifier.py's NSE fallback],
+# etc.) is LOW by default - routine/administrative, not excluded outright
+# since the free-text attchmntText can still be read on request, just not
+# surfaced by default.

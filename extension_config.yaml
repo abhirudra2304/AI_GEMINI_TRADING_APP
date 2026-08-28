@@ -1,0 +1,22 @@
+# Configuration for extension_score.py
+#
+# Thresholds for how far a signal's price sits above its EMA20 at signal
+# time before it's flagged as an overextended entry.
+
+# Base percentage thresholds at normalized India VIX = 15.0
+normal_max_pct: 8.0
+very_extended_min_pct: 15.0
+
+# Asset-level ATR multiple limits
+normal_max_atr_mult: 2.5        # <= 2.5x ATR above EMA20 is NORMAL
+very_extended_min_atr_mult: 4.0 # >= 4.0x ATR above EMA20 is VERY_EXTENDED
+
+# India VIX dynamic scaling
+enable_vix_scaling: true
+vix_baseline: 15.0
+vix_min_scale: 0.75
+vix_max_scale: 1.35
+
+# Daily candle lookback used to compute EMA20/EMA50/ATR as of a signal's own
+# report date (not today)
+ema_lookback_days: 300

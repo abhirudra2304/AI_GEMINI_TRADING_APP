@@ -1,0 +1,38 @@
+# Configuration for momentum_scanner.py (run_momentum_scan)
+#
+# This is the always-on sibling of EMFB (see emfb.py): same underlying
+# metrics/scoring engine (EMFBScanner.compute_emfb_metrics /
+# rank_and_score_emfb, shared with emfb.py — never forked), but with no
+# market-weakness regime gate. EMFB only produces a report on days its
+# index/breadth weakness check activates; a genuine breakout (e.g. APARINDS
+# on 2026-07-31) can otherwise go unreported for days if the market stays
+# calm. This scanner runs on every invocation within its own window instead,
+# so a scan is always available.
+#
+# Score/RR thresholds intentionally stay in config.EMFB (config.py) rather
+# than being duplicated here — the scoring model itself is shared and must
+# not fork from EMFB's, per the plugin-only architecture rule. Only this
+# scanner's own independent knobs (window, cache TTL, output size, weight
+# profile) live in this file.
+
+# Weekday trading-hours window this scanner is allowed to run in (IST,
+# HH:MM). Unlike EMFB (which only makes sense in the last hour, 14:30-18:00,
+# since it scores last-hour volume and closing strength), momentum scanning
+# is useful any time there's a live/completed session to score.
+scan_window:
+  start: "09:15"
+  end: "18:00"
+
+# Which weight profile (from config.EMFB.WEIGHT_PROFILES) to score with.
+# 'DEFAULT' is the balanced/neutral-day profile - appropriate since this
+# scanner has no regime detection of its own to pick BEARISH_MARKET vs
+# NEUTRAL_MARKET the way EMFB does.
+weight_profile: DEFAULT
+
+# Number of top-ranked stocks to display and save.
+report_top_n: 20
+
+# Result-cache TTL in minutes (separate cache file from EMFB's, see
+# MOMENTUM_CACHE_PATH in momentum_scanner.py) - avoids re-fetching the whole
+# universe on repeated calls within the same run.
+cache_ttl_minutes: 60
