@@ -87,6 +87,7 @@ from dashboard import TerminalDashboard
 from final_ranker import AdaptiveRanker, RankerConfig
 from institutional_flow import InstitutionalFlowEngine, InstitutionalFlowResult
 from integration_adapter import IntegrationAdapter
+from nse_delivery_feed import NSEDeliveryFeed
 from market_context import (
     AdvanceDeclineData,
     BreadthData,
@@ -155,6 +156,14 @@ class PipelineConfig:
             without this flag.
         validation_report_config: Thresholds for the diagnostics report.
             Defaults to ValidationReportConfig() when None.
+        delivery_lookback_days: Trading days of NSE bhavcopy delivery data
+            to fetch for institutional_flow.py's DeliveryVolume input.
+            institutional_flow.py's own accumulation_window (20 sessions)
+            is the longest lookback anything currently does with delivery
+            data - rvol_window (50) is volume-only, not delivery - so this
+            deliberately doesn't need to match history_days (460); a
+            smaller, independent window keeps the daily bhavcopy fetch
+            (one HTTP call per day, real network I/O against NSE) fast.
     """
     universe: Optional[List[str]] = None
     history_days: int = 460
@@ -168,6 +177,7 @@ class PipelineConfig:
     top_n_alpha_picks: int = 10
     enable_validation_report: bool = False
     validation_report_config: Optional[ValidationReportConfig] = None
+    delivery_lookback_days: int = 30
 
 
 # --------------------------------------------------------------------------- #
@@ -211,6 +221,9 @@ class PipelineRunner:
         self.review_engine = SystemReviewEngine(self.repository, self.ranker_config)
         self.validation_engine = ValidationReportEngine(self.config.validation_report_config)
         self.last_run: Optional[PipelineRunArtifacts] = None
+        # Lazy, same pattern as self._broker above - constructing
+        # PipelineRunner never makes a network call by itself.
+        self._delivery_feed: Optional[NSEDeliveryFeed] = None
 
     # -- data access ----------------------------------------------------------- #
 
@@ -418,26 +431,44 @@ class PipelineRunner:
         """Adds a DeliveryVolume column to each ticker's OHLCV frame for
         institutional_flow.py's input contract.
 
-        DataBroker has no live delivery-% data source wired up yet, so
-        this is populated with 0.0 rather than NaN: institutional_flow's
-        delivery_percent would then be 0.0 (an honest, if conservative,
-        "no delivery signal available" reading), not NaN — NaN would
-        propagate through institutional_score's weighted sum and corrupt
-        the RVOL/closing-range components too, which is worse than simply
-        reporting no delivery-driven accumulation signal until a real feed
-        is connected.
+        Backed by nse_delivery_feed.py (NSE's public daily bhavcopy, real
+        DELIV_QTY per symbol - see that module's docstring) since
+        2026-08-07. Falls back to the original 0.0-everywhere behavior if
+        the feed is unreachable or returns nothing usable - a delivery-data
+        outage must never take down the whole pipeline run, matching this
+        file's own stated failure policy ("one bad symbol does not take
+        down the whole day's scan"). 0.0 (not NaN) is still the fallback
+        value for any (ticker, date) the feed doesn't cover: institutional_
+        flow's delivery_percent would then read 0.0 (an honest, conservative
+        "no delivery signal available"), not NaN, which would corrupt the
+        RVOL/closing-range components of institutional_score too.
 
         Args:
-            price_data: ticker -> OHLCV DataFrame.
+            price_data: ticker -> OHLCV DataFrame (DatetimeIndex).
 
         Returns:
             New dict of ticker -> DataFrame with a DeliveryVolume column
             added (originals are not mutated).
         """
+        if self._delivery_feed is None:
+            self._delivery_feed = NSEDeliveryFeed()
+
+        tickers = list(price_data.keys())
+        try:
+            history = self._delivery_feed.fetch_delivery_history(
+                tickers, trading_days=self.config.delivery_lookback_days
+            )
+        except Exception as e:
+            logger.warning(f"NSE delivery feed failed ({e}); falling back to 0.0 DeliveryVolume for this run.")
+            history = pd.DataFrame(columns=tickers)
+
         augmented = {}
         for ticker, df in price_data.items():
             with_delivery = df.copy()
-            with_delivery["DeliveryVolume"] = 0.0
+            if ticker in history.columns:
+                with_delivery["DeliveryVolume"] = history[ticker].reindex(df.index).fillna(0.0)
+            else:
+                with_delivery["DeliveryVolume"] = 0.0
             augmented[ticker] = with_delivery
         return augmented
 

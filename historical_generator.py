@@ -1,27 +1,37 @@
 import os
 import pandas as pd
+import sys
+
+# Add the project root to the Python path to resolve import issues
+project_root = os.path.dirname(os.path.abspath(__file__))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# --- AUTO VENV ACTIVATION ---
+from venv_activator import ensure_venv
+ensure_venv()
+# --------------------------
+
 from datetime import datetime
 import logging
 from data_broker import DataBroker
+from database import SignalDB
 from scanner_engine import HybridScanner
-from orchestrator import (
-    SignalDB,
-    DiscoveryCache,
-    execute_macro_discovery,
-    run_manual_scan,
-    MARKET_TZ,
-)
+from orchestrator import run_manual_scan
+from discovery import execute_macro_discovery
+from cache import DiscoveryCache
+import config
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def run_historical_generation(days_back=30, strategy: str = 'BTST'):
+def run_historical_generation(days_back=30, strategy: str = 'BTST', index_name: str = 'nifty500'):
     """
     Simulates EOD market conditions over a historical window and logs triggered
     signals into the local database for backtesting. This runs the full
     discovery and confirmation scan for each day to generate realistic signals.
     """
-    logger.info(f"🕰️  Initiating Historical Generator: Simulating EOD {strategy} scans for the past {days_back} days...")
+    logger.info(f"🕰️  Initiating Historical Generator: Simulating EOD {strategy} scans for {index_name.upper()} for the past {days_back} days...")
     
     broker = DataBroker()
     scanner = HybridScanner()
@@ -44,14 +54,14 @@ def run_historical_generation(days_back=30, strategy: str = 'BTST'):
         logger.info(f"\n📅 Processing Date: {target_date}")
         
         # Create a point-in-time datetime object for the end of the historical day.
-        point_in_time = datetime.combine(target_date, datetime.max.time()).replace(tzinfo=MARKET_TZ)
+        point_in_time = datetime.combine(target_date, datetime.max.time()).replace(tzinfo=config.MARKET_TZ)
 
         # Use a temporary, in-memory cache for this run to avoid polluting the main cache.
         temp_cache = DiscoveryCache(path=None)
         
         # 1. Run discovery for this historical date.
-        watchlist, discovered_df = execute_macro_discovery(
-            broker, scanner, strategy=strategy, force_refresh=True, cache=temp_cache, point_in_time=point_in_time, caller="HistGen-Discovery"
+        watchlist, discovered_df, _ = execute_macro_discovery(
+            broker, scanner, strategy=strategy, force_refresh=True, cache=temp_cache, point_in_time=point_in_time, caller="HistGen-Discovery", index_name=index_name
         )
         
         if watchlist:
@@ -76,8 +86,8 @@ def run_historical_generation(days_back=30, strategy: str = 'BTST'):
     logger.info("=" * 60)
 
 if __name__ == "__main__":
-    # Example: python historical_generator.py 90 BTST
-    import sys
+    # Example: python historical_generator.py 90 BTST nifty500
     days = int(sys.argv[1]) if len(sys.argv) > 1 else 30
     strat = sys.argv[2].upper() if len(sys.argv) > 2 else 'BTST'
-    run_historical_generation(days_back=days, strategy=strat)
+    index = sys.argv[3].lower() if len(sys.argv) > 3 else 'nifty500'
+    run_historical_generation(days_back=days, strategy=strat, index_name=index)

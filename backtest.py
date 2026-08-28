@@ -1,21 +1,27 @@
 import argparse
 import math
 import os
+import sys
+
+# Add the project root to the Python path to resolve import issues
+project_root = os.path.dirname(os.path.abspath(__file__))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# --- AUTO VENV ACTIVATION ---
+from venv_activator import ensure_venv
+ensure_venv()
+# --------------------------
+
 import sqlite3
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterable, Optional, Tuple
-from zoneinfo import ZoneInfo
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple
 
 import config
 import pandas as pd
-
-
-# The scanner stores timestamps without an explicit timezone in older databases.
-# NSE candles should be interpreted in India market time unless the value itself
-# already carries a timezone offset.
-MARKET_TZ = ZoneInfo("Asia/Kolkata")
+from utils import add_decision_scores
 
 # Outcomes that are included in performance statistics. Skipped rows are still
 # written to SQLite for auditability, but do not pollute win-rate or expectancy.
@@ -64,7 +70,7 @@ OUTCOME_COLUMNS = {
 class BacktestResult:
     signal_id: int
     symbol: str
-    signal_timestamp: str
+    signal_timestamp: Optional[str]
     strategy: str
     planned_entry: Optional[float]
     entry: Optional[float]
@@ -90,7 +96,7 @@ class BacktestResult:
     created_at: str
 
 
-def normalize_timestamp(value) -> pd.Timestamp:
+def normalize_timestamp(value: Any) -> pd.Timestamp:
     """Normalize DB and candle timestamps to naive Asia/Kolkata exchange time.
 
     The database historically stored strings like "2026-06-19 15:22" with no
@@ -103,7 +109,7 @@ def normalize_timestamp(value) -> pd.Timestamp:
     if pd.isna(ts):
         raise ValueError(f"Invalid timestamp: {value!r}")
     if getattr(ts, "tzinfo", None) is not None:
-        ts = ts.tz_convert(MARKET_TZ).tz_localize(None)
+        ts = ts.tz_convert(config.MARKET_TZ).tz_localize(None)
     return ts
 
 
@@ -112,15 +118,20 @@ def normalize_timestamp_series(series: pd.Series) -> pd.Series:
     ts = pd.to_datetime(series, errors="coerce")
     try:
         if getattr(ts.dt, "tz", None) is not None:
-            ts = ts.dt.tz_convert(MARKET_TZ).dt.tz_localize(None)
+            ts = ts.dt.tz_convert(config.MARKET_TZ).dt.tz_localize(None)
     except AttributeError:
         # Mixed timezone strings can become object dtype. Fall back to the
         # scalar normalizer so a few odd rows do not poison the full file.
-        ts = series.apply(lambda value: normalize_timestamp(value) if pd.notna(value) else pd.NaT)
+        # The .apply method with a complex lambda can be difficult for type checkers.
+        # A list comprehension feeding a new Series is more explicit and resolves the type error.
+        ts = pd.Series(
+            [normalize_timestamp(value) if pd.notna(value) else pd.NaT for value in series],
+            index=series.index, name=series.name, dtype="datetime64[ns]"
+        )
     return ts
 
 
-def normalize_strategy(row) -> str:
+def normalize_strategy(row: pd.Series) -> str:
     """Read strategy from old and new signal schemas, defaulting old rows to SWING."""
     for key in ("strategy", "horizon", "Horizon", "HORIZON"):
         if key in row and pd.notna(row[key]):
@@ -130,7 +141,7 @@ def normalize_strategy(row) -> str:
     return "SWING"
 
 
-def get_signal_id(row) -> int:
+def get_signal_id(row: pd.Series) -> int:
     """Use the signals.id primary key, falling back to SQLite rowid for legacy DBs."""
     for key in ("id", "_rowid"):
         if key in row and pd.notna(row[key]):
@@ -138,8 +149,8 @@ def get_signal_id(row) -> int:
     raise ValueError("Signal row does not include id or rowid")
 
 
-def as_float(row, key: str) -> float:
-    value = row[key]
+def as_float(row: pd.Series, key: str) -> float:
+    value = row.get(key)
     if pd.isna(value):
         raise ValueError(f"Missing required numeric field: {key}")
     return float(value)
@@ -147,7 +158,7 @@ def as_float(row, key: str) -> float:
 
 def trade_cost_decimal(strategy: str) -> float:
     """Return a strategy-specific round-trip cost estimate."""
-    if strategy.upper() in ["GAP", "BTST"]:
+    if strategy.upper() in ["GAP", "BTST", "INTRADAY"]:
         return config.Backtest.INTRADAY_COST_PCT
     return config.Backtest.DELIVERY_COST_PCT
 
@@ -171,31 +182,19 @@ def recalc_levels_from_actual_entry(
     return actual_entry - planned_risk, actual_entry + planned_reward
 
 
-def decision_score_from_row(row) -> float:
-    """Final selection score calibrated from realized outcome diagnostics.
-    
-    NOTE: This logic MUST be kept in sync with orchestrator.add_decision_scores.
-    
-    This score was derived from historical analysis which showed that the
-    "hottest" signals (high raw score, high RS) were often over-extended and
-    performed worse. This score therefore ranks less crowded, confirmed setups
-    higher by rewarding lower raw scores and lower relative strength.
+def decision_score_from_row(row: pd.Series) -> float:
+    """DEPRECATED. Uses the unified add_decision_scores from utils.
+
+    This function now acts as a wrapper to ensure backtesting uses the exact
+    same scoring logic as the live scanner. The original implementation is
+    preserved in git history but is a source of critical bugs if not unified.
     """
-    score_val = float(row.get("score", 0) or 0)
-    rs_val = float(row.get("rs_pctl", 0) or 0)
-    sector_val = float(row.get("sector_rs", 0) or 0)
-    adx_val = float(row.get("adx", 0) or 0)
-    score_cool = 100 - min(max(score_val, 0), 100)
-    rs_cool = 100 - min(max(rs_val, 0), 100)
-    sector_cool = 100 - min(max(sector_val, 0), 100)
-    adx_cool = 100 - (min(max(adx_val, 0), 50) / 50 * 100)
-    return round(
-        (rs_cool * 0.40) + (score_cool * 0.35) + (sector_cool * 0.15) + (adx_cool * 0.10),
-        1,
-    )
+    df = pd.DataFrame([row])
+    ranked_df = add_decision_scores(df)
+    return ranked_df.iloc[0]["Decision_Score"]
 
 
-def iso_or_none(value) -> Optional[str]:
+def iso_or_none(value: Any) -> Optional[str]:
     if value is None or pd.isna(value):
         return None
     return pd.Timestamp(value).isoformat(sep=" ", timespec="seconds")
@@ -272,7 +271,7 @@ class CandleStore:
         self.cache_dir = Path(cache_dir)
         self.interval = interval
         self._cache: Dict[str, pd.DataFrame] = {}
-        self._meta: Dict[str, Dict[str, object]] = {}
+        self._meta: Dict[str, Dict[str, Any]] = {}
 
     def _files_for_symbol(self, symbol: str) -> Iterable[Path]:
         pattern = f"{symbol}_{self.interval}*.parquet"
@@ -329,7 +328,7 @@ class CandleStore:
         }
         return candles
 
-    def meta(self, symbol: str) -> Dict[str, object]:
+    def meta(self, symbol: str) -> Dict[str, Any]:
         self.load_symbol(symbol)
         return self._meta[str(symbol).strip().upper()]
 
@@ -359,10 +358,13 @@ class CandleStore:
         return session.head(max_candles).copy()
 
 
-def skipped_result(row, reason: str, store: CandleStore) -> BacktestResult:
+def skipped_result(row: pd.Series, reason: str, store: CandleStore) -> BacktestResult:
     """Write skipped signals too, so data coverage failures are visible in SQL."""
     symbol = str(row.get("symbol", "")).strip().upper()
-    signal_time = normalize_timestamp(row["timestamp"])
+    try:
+        signal_time = normalize_timestamp(row.get("timestamp"))
+    except (ValueError, KeyError):
+        signal_time = None
     strategy = normalize_strategy(row)
     try:
         meta = store.meta(symbol) if symbol else {}
@@ -394,12 +396,12 @@ def skipped_result(row, reason: str, store: CandleStore) -> BacktestResult:
         data_end=meta.get("data_end"),
         data_bars=int(meta.get("data_bars", 0) or 0),
         source_file_count=int(meta.get("file_count", 0) or 0),
-        created_at=datetime.now(MARKET_TZ).isoformat(timespec="seconds"),
+        created_at=datetime.now(config.MARKET_TZ).isoformat(timespec="seconds"),
     )
 
 
 def finalize_result(
-    row,
+    row: pd.Series,
     store: CandleStore,
     strategy: str,
     path: pd.DataFrame,
@@ -418,7 +420,7 @@ def finalize_result(
     """Create a normalized result row from a strategy evaluator."""
     symbol = str(row["symbol"]).strip().upper()
     signal_time = normalize_timestamp(row["timestamp"])
-    raw_return = (exit_price / entry_price) - 1.0
+    raw_return = (exit_price / entry_price) - 1.0 if entry_price > 0 else 0.0
     friction = trade_cost_decimal(strategy)
     adjusted_return = raw_return - friction
     meta = store.meta(symbol)
@@ -449,7 +451,7 @@ def finalize_result(
         data_end=meta.get("data_end"),
         data_bars=int(meta.get("data_bars", 0) or 0),
         source_file_count=int(meta.get("file_count", 0) or 0),
-        created_at=datetime.now(MARKET_TZ).isoformat(timespec="seconds"),
+        created_at=datetime.now(config.MARKET_TZ).isoformat(timespec="seconds"),
     )
 
 
@@ -462,11 +464,11 @@ def evaluate_long_path(
 ) -> Tuple[str, str, float, pd.Timestamp, int]:
     """Evaluate a long trade path with conservative same-candle sequencing."""
     for i, candle in enumerate(path.itertuples(index=False), start=1):
-        open_price = float(candle.Open)
-        low_price = float(candle.Low)
-        high_price = float(candle.High)
-        close_price = float(candle.Close)
-        candle_time = candle.Timestamp
+        open_price = float(getattr(candle, "Open"))
+        low_price = float(getattr(candle, "Low"))
+        high_price = float(getattr(candle, "High"))
+        close_price = float(getattr(candle, "Close"))
+        candle_time = getattr(candle, "Timestamp")
 
         # If the first tradable price gaps through a stop or target, use the
         # open. This avoids pretending a planned stop filled at a better price
@@ -490,109 +492,91 @@ def evaluate_long_path(
     raise ValueError("Cannot evaluate an empty candle path")
 
 
-def evaluate_btst(row, store: CandleStore) -> BacktestResult:
+def _evaluate_strategy_path(
+    row: pd.Series,
+    store: CandleStore,
+    strategy: str,
+    path_finder: Callable,
+    time_exit_label: str,
+    check_entry_gap: bool = True,
+) -> BacktestResult:
+    """A generic, reusable backtest evaluation function for a given strategy path."""
+    symbol = str(row["symbol"]).strip().upper()
+    signal_time = normalize_timestamp(row["timestamp"])
+
+    holding_period = config.Backtest.HOLDING_PERIOD_CANDLES.get(strategy, config.Backtest.SESSION_CANDLES_15M * 5)
+    path = path_finder(symbol, signal_time, holding_period)
+
+    if path.empty:
+        reason = "NO_NEXT_SESSION_CANDLES" if "next_session" in path_finder.__name__ else "NO_FUTURE_CANDLES"
+        return skipped_result(row, reason, store)
+
+    planned_entry = as_float(row, "entry")
+    planned_stop = as_float(row, "stop")
+    planned_target = as_float(row, "target")
+    entry_time = path["Timestamp"].iloc[0]
+    entry_price = float(path["Open"].iloc[0])
+
+    if check_entry_gap and entry_price <= planned_stop:
+        return finalize_result(
+            row, store, strategy, path, entry_price, entry_time, planned_entry,
+            planned_stop, planned_target, decision_score_from_row(row),
+            "GAP_THROUGH_STOP", f"{strategy.lower()}_open_below_planned_stop",
+            entry_price, entry_time, 1
+        )
+
+    stop, target = recalc_levels_from_actual_entry(
+        planned_entry, entry_price, planned_stop, planned_target
+    )
+
+    outcome, reason, exit_price, exit_time, held = evaluate_long_path(
+        path, entry_price, stop, target, time_exit_label
+    )
+
+    return finalize_result(
+        row, store, strategy, path, entry_price, entry_time, planned_entry,
+        stop, target, decision_score_from_row(row), outcome, reason,
+        exit_price, exit_time, held
+    )
+
+
+def evaluate_btst(row: pd.Series, store: CandleStore) -> BacktestResult:
     """BTST: enter next available candle, exit by next-session horizon."""
-    symbol = str(row["symbol"]).strip().upper()
-    signal_time = normalize_timestamp(row["timestamp"])
-    path = store.future_after(symbol, signal_time, config.Backtest.HOLDING_PERIOD_CANDLES["BTST"])
-    if path.empty:
-        return skipped_result(row, "NO_FUTURE_CANDLES", store)
-
-    planned_entry = as_float(row, "entry")
-    planned_stop = as_float(row, "stop")
-    planned_target = as_float(row, "target")
-    entry_time = path["Timestamp"].iloc[0]
-    entry_price = float(path["Open"].iloc[0])
-    if entry_price <= planned_stop:
-        return finalize_result(
-            row, store, "BTST", path, entry_price, entry_time, planned_entry,
-            planned_stop, planned_target, decision_score_from_row(row),
-            "GAP_THROUGH_STOP", "overnight_open_below_planned_stop",
-            entry_price, entry_time, 1
-        )
-    stop, target = recalc_levels_from_actual_entry(
-        planned_entry, entry_price, planned_stop, planned_target
-    )
-    outcome, reason, exit_price, exit_time, held = evaluate_long_path(
-        path, entry_price, stop, target, "TIME_STOP"
-    )
-    return finalize_result(
-        row, store, "BTST", path, entry_price, entry_time, planned_entry,
-        stop, target, decision_score_from_row(row), outcome, reason,
-        exit_price, exit_time, held
-    )
+    return _evaluate_strategy_path(row, store, "BTST", store.future_after, "TIME_STOP")
 
 
-def evaluate_gap(row, store: CandleStore) -> BacktestResult:
+def evaluate_gap(row: pd.Series, store: CandleStore) -> BacktestResult:
     """GAP: enter the first candle of the next trading session, exit that session."""
-    symbol = str(row["symbol"]).strip().upper()
-    signal_time = normalize_timestamp(row["timestamp"])
-    path = store.next_session_after(symbol, signal_time, config.Backtest.HOLDING_PERIOD_CANDLES["GAP"])
-    if path.empty:
-        return skipped_result(row, "NO_NEXT_SESSION_CANDLES", store)
-
-    planned_entry = as_float(row, "entry")
-    planned_stop = as_float(row, "stop")
-    planned_target = as_float(row, "target")
-    entry_time = path["Timestamp"].iloc[0]
-    entry_price = float(path["Open"].iloc[0])
-    if entry_price <= planned_stop:
-        return finalize_result(
-            row, store, "GAP", path, entry_price, entry_time, planned_entry,
-            planned_stop, planned_target, decision_score_from_row(row),
-            "GAP_THROUGH_STOP", "next_session_open_below_planned_stop",
-            entry_price, entry_time, 1
-        )
-    stop, target = recalc_levels_from_actual_entry(
-        planned_entry, entry_price, planned_stop, planned_target
-    )
-    outcome, reason, exit_price, exit_time, held = evaluate_long_path(
-        path, entry_price, stop, target, "SESSION_CLOSE"
-    )
-    return finalize_result(
-        row, store, "GAP", path, entry_price, entry_time, planned_entry,
-        stop, target, decision_score_from_row(row), outcome, reason,
-        exit_price, exit_time, held
+    return _evaluate_strategy_path(
+        row, store, "GAP", store.next_session_after, "SESSION_CLOSE"
     )
 
 
-def evaluate_swing(row, store: CandleStore) -> BacktestResult:
+def evaluate_swing(row: pd.Series, store: CandleStore) -> BacktestResult:
     """SWING: enter next available candle, hold up to five trading sessions."""
-    symbol = str(row["symbol"]).strip().upper()
-    signal_time = normalize_timestamp(row["timestamp"])
-    path = store.future_after(symbol, signal_time, config.Backtest.HOLDING_PERIOD_CANDLES["SWING"])
-    if path.empty:
-        return skipped_result(row, "NO_FUTURE_CANDLES", store)
-
-    planned_entry = as_float(row, "entry")
-    planned_stop = as_float(row, "stop")
-    planned_target = as_float(row, "target")
-    entry_time = path["Timestamp"].iloc[0]
-    entry_price = float(path["Open"].iloc[0])
-    stop, target = recalc_levels_from_actual_entry(
-        planned_entry, entry_price, planned_stop, planned_target
-    )
-    outcome, reason, exit_price, exit_time, held = evaluate_long_path(
-        path, entry_price, stop, target, "TIME_STOP"
-    )
-    return finalize_result(
-        row, store, "SWING", path, entry_price, entry_time, planned_entry,
-        stop, target, decision_score_from_row(row), outcome, reason,
-        exit_price, exit_time, held
-    )
+    return _evaluate_strategy_path(row, store, "SWING", store.future_after, "TIME_STOP")
 
 
-def evaluate_signal(row, store: CandleStore) -> BacktestResult:
+def evaluate_intraday(row: pd.Series, store: CandleStore) -> BacktestResult:
+    """INTRADAY: enter next available candle, exit by end of session."""
+    return _evaluate_strategy_path(
+        row, store, "INTRADAY", store.future_after, "SESSION_CLOSE"
+    )
+
+def evaluate_emfb(row: pd.Series, store: CandleStore) -> BacktestResult:
+    """EMFB: enter next available candle, hold up to ten trading sessions."""
+    return _evaluate_strategy_path(row, store, "EMFB", store.future_after, "TIME_STOP")
+
+
+def evaluate_signal(row: pd.Series, store: CandleStore) -> BacktestResult:
     """Dispatch to separate strategy logic instead of one generic holding period."""
     strategy = normalize_strategy(row)
-    if strategy == "BTST":
-        return evaluate_btst(row, store)
-    if strategy == "GAP":
-        return evaluate_gap(row, store)
-    return evaluate_swing(row, store)
+    evaluators = {"BTST": evaluate_btst, "GAP": evaluate_gap, "SWING": evaluate_swing, "INTRADAY": evaluate_intraday, "EMFB": evaluate_emfb}
+    evaluator = evaluators.get(strategy, evaluate_swing)
+    return evaluator(row, store)
 
 
-def result_to_db_row(result: BacktestResult) -> Dict[str, object]:
+def result_to_db_row(result: BacktestResult) -> Dict[str, Any]:
     row = asdict(result)
     row["return"] = row["return_decimal"]
     return row
@@ -756,13 +740,56 @@ def compute_topn_portfolio_stats(df: pd.DataFrame, top_n: int, label: str) -> Di
         "max_drawdown": max_dd,
     }
 
+def compute_forward_returns(df: pd.DataFrame, store: CandleStore, label: str):
+    """Compute forward returns for a set of trades."""
+    emfb_df = df[df["strategy"] == label].copy()
+    if emfb_df.empty:
+        return
+
+    print("\n" + "=" * 72)
+    print(f"{label} FORWARD RETURN ANALYSIS")
+    print("=" * 72)
+
+    forward_returns = {1: [], 3: [], 5: [], 10: []}
+    candles_per_day = config.Backtest.SESSION_CANDLES_15M
+
+    for _, row in emfb_df.iterrows():
+        if row['outcome'].startswith("SKIPPED"):
+            continue
+
+        entry_price = row['entry']
+        if pd.isna(entry_price) or entry_price == 0:
+            continue
+
+        signal_timestamp = row.get('signal_timestamp')
+        if pd.isna(signal_timestamp):
+            continue
+        signal_time = normalize_timestamp(signal_timestamp)
+        future_candles = store.future_after(row['symbol'], signal_time, candles_per_day * 11)
+        if future_candles.empty:
+            continue
+
+        for days in forward_returns.keys():
+            exit_candle_idx = (candles_per_day * days) - 1
+            if len(future_candles) > exit_candle_idx:
+                exit_price = future_candles.iloc[exit_candle_idx]['Close']
+                ret = (exit_price / entry_price) - 1
+                forward_returns[days].append(ret)
+
+    for days, returns in forward_returns.items():
+        if returns:
+            avg_ret = pd.Series(returns).mean() * 100
+            win_rate = (pd.Series(returns) > 0).mean() * 100
+            print(f"{days}-Day Forward Return : Avg {avg_ret:.2f}% (Win Rate: {win_rate:.1f}%)")
+    print("=" * 72)
+
 
 def print_bias_audit() -> None:
     """Surface the remaining research limitations every time the report runs."""
     print("\nBIAS AUDIT")
     print("- Look-ahead: fixed in this backtest by replaying cached candles strictly after each signal timestamp.")
     print("- Future leakage: fixed for exits; no live broker fetch is used by default in backtest.")
-    print("- Survivorship: CRITICAL FLAW. Signals were generated from today's scanner universe, not a point-in-time universe. Results are likely overly optimistic.")
+    print("- Survivorship: PARTIALLY MITIGATED. Use `historical_generator.py` to create signals from point-in-time universes. The quality of this mitigation depends entirely on the accuracy of your `data/nifty500_constituents.csv` file.")
     print("- Timestamp: older signals are timezone-naive and assumed to be Asia/Kolkata.")
     print("- Corporate Actions: CRITICAL FLAW. Backtest does not handle stock splits/dividends. A split between signal generation and backtest execution will invalidate results for that symbol.")
     print("- Data coverage: skipped outcomes are stored in SQLite when no post-signal candles exist.")
@@ -806,10 +833,12 @@ def run_backtest_report(
     skipped_count = len(results_df) - terminal_count
 
     compute_stats(results_df, "OVERALL")
-    for strat in ["BTST", "GAP", "SWING"]:
+    for strat in ["BTST", "GAP", "SWING", "INTRADAY", "EMFB"]:
         compute_stats(results_df[results_df["strategy"] == strat].copy(), strat)
     for top_n in (1, 3, 5):
-        compute_topn_portfolio_stats(results_df, top_n, "BTST/SWING/GAP")
+        compute_topn_portfolio_stats(results_df, top_n, "BTST/SWING/GAP/INTRADAY")
+
+    compute_forward_returns(results_df, store, "EMFB")
 
     results_df.to_csv("backtest_results.csv", index=False)
     print("\nSaved: backtest_results.csv")

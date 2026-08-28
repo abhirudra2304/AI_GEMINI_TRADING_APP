@@ -3,6 +3,18 @@ import sqlite3
 import pandas as pd
 import numpy as np
 from scipy import stats
+import os
+import sys
+
+# Add the project root to the Python path to resolve import issues
+project_root = os.path.dirname(os.path.abspath(__file__))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# --- AUTO VENV ACTIVATION ---
+from venv_activator import ensure_venv
+ensure_venv()
+# --------------------------
 
 DB = "signals.db"
 score_cols_preferred = ["Decision_Score", "Decision_Score".lower(), "score", "Score"]

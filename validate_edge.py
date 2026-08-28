@@ -2,6 +2,13 @@ import pandas as pd
 import numpy as np
 import sqlite3
 import warnings
+import os
+import sys
+
+# Add the project root to the Python path to resolve import issues
+project_root = os.path.dirname(os.path.abspath(__file__))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 warnings.filterwarnings('ignore')
 
 def calculate_metrics(df):
@@ -89,17 +96,18 @@ def main():
         
         # Format timestamps for merge
         # Format timestamps for merge
+        # Timestamps in both sources are naive but represent market time.
+        # Forcing to UTC would create a mismatch. We just need to ensure
+        # they are both parsed as datetime objects for the merge.
         sig_df['signal_timestamp'] = pd.to_datetime(
             sig_df['signal_timestamp'],
             format='mixed',
-            utc=True,
             errors='coerce'
         )
 
         bt_df['signal_timestamp'] = pd.to_datetime(
             bt_df['signal_timestamp'],
             format='mixed',
-            utc=True,
             errors='coerce'
         )
 
