@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from zoneinfo import ZoneInfo
 import config
+from silent_accumulation import compute_silent_metrics
 
 logger = logging.getLogger(__name__)
 MARKET_TZ = ZoneInfo("Asia/Kolkata")
@@ -90,7 +91,16 @@ class HybridScanner:
         rs = gain / loss
         df['RSI'] = 100 - (100 / (1 + rs))
 
-        return df.iloc[-1].to_dict()
+        metrics = df.iloc[-1].to_dict()
+
+        # Silent accumulation footprint (see silent_accumulation.py). Computed
+        # once here so both the discovery ranking and the confirmation scan can
+        # read it without recomputing indicators.
+        silent_metrics = compute_silent_metrics(df)
+        if silent_metrics:
+            metrics.update(silent_metrics)
+
+        return metrics
 
     def _prepare_intraday_frame(self, df: pd.DataFrame) -> pd.DataFrame:
         if df is None or df.empty:
@@ -263,13 +273,132 @@ class HybridScanner:
             return f"Strong daily setup with price above VWAP, but execution quality is only {execution.get('Execution_Grade')}. Watch for stronger afternoon follow-through."
         return "Excellent daily trend but weak afternoon momentum. Wait for better execution."
 
+    def scan_silent(self, symbol: str, df_daily: pd.DataFrame, daily_metrics: Optional[Dict[str, Any]] = None,
+                    rs_percentile: float = 50.0, sector_rs: float = 50.0,
+                    regime_mult: float = 1.0) -> Optional[Dict[str, Any]]:
+        """
+        Scores a stock on the silent-accumulation footprint instead of momentum.
+
+        The momentum path pays for volume shocks, ADX velocity and 250-day
+        breakouts - exactly the loud behaviour a stealth institutional bid
+        avoids. Here the reward goes to persistence of trend: a smooth
+        regression slope, a compressed ATR and price riding the 20 EMA with no
+        single flashy day. Sizing is still ATR-based, but with a wider
+        multiplier because a quiet stock's ATR is small and a tight stop would
+        be noise-triggered.
+        """
+        cfg = config.Silent
+        d_metrics = daily_metrics if daily_metrics is not None else self.compute_daily_metrics(df_daily)
+        if d_metrics is None:
+            return None
+
+        silent_score = d_metrics.get('Silent_Score')
+        if silent_score is None or pd.isna(silent_score):
+            return None
+
+        cp = d_metrics.get('Close', 0)
+        ema50 = d_metrics.get('EMA50', cp)
+        ema20 = d_metrics.get('EMA20', cp)
+        atr_val = d_metrics.get('atr', cp * 0.02)
+        rsi_val = d_metrics.get('RSI', 50)
+        adx_val = d_metrics.get('adx', 0)
+        pivot_50 = d_metrics.get('Pivot_50', cp)
+        pivot_250 = d_metrics.get('Pivot_250', cp)
+
+        liquidity_val = d_metrics.get('Avg_Traded_Value_20d', 0)
+        liquidity_label = "HIGH" if liquidity_val > 100_000_000 else "LOW"
+
+        # Hard filter. The RSI and RS floors are softer than the momentum path:
+        # a stock grinding up 1% a day rarely prints an overbought RSI, and it
+        # is usually still climbing the RS ladder rather than topping it.
+        if (liquidity_label == "LOW" or cp < ema50
+                or rsi_val < cfg.RSI_THRESHOLD
+                or rs_percentile < cfg.RS_PCT_THRESHOLD
+                or silent_score < cfg.SCORE_WATCH):
+            return None
+
+        regime_mult_clamped = max(0.5, min(1.0, regime_mult))
+        quality_score = max(0.0, min(100.0, round(float(silent_score) * regime_mult_clamped, 1)))
+
+        stop_distance = atr_val * cfg.ATR_MULTIPLIER
+        stop_loss_price = cp - stop_distance
+        risk_per_share = cp - stop_loss_price
+        target_price = cp + (stop_distance * cfg.RR_RATIO)
+        risk_reward = ((target_price - cp) / risk_per_share) if risk_per_share > 0 else 0
+
+        qty_risk = self.max_risk_per_trade / risk_per_share if risk_per_share > 0 else 0
+        qty_cap = self.max_capital_per_trade / cp if cp > 0 else 0
+        quantity = int(min(qty_risk, qty_cap))
+        capital_required = quantity * cp
+
+        pct_from_p50 = ((cp - pivot_50) / pivot_50) * 100 if not pd.isna(pivot_50) and pivot_50 != 0 else 0.0
+        pct_from_p250 = ((cp - pivot_250) / pivot_250) * 100 if not pd.isna(pivot_250) and pivot_250 != 0 else np.nan
+        ema50_distance = ((cp - ema50) / ema50) * 100 if ema50 else 0.0
+        is_breakout = cp > pivot_250 if not pd.isna(pivot_250) else False
+
+        if quality_score >= cfg.SCORE_STRONG:
+            signal_strength = "STEALTH LEADER 🕵️"
+            recommendation = "BUY TODAY"
+        elif quality_score >= cfg.SCORE_QUALIFIED:
+            signal_strength = "ACCUMULATING 📈"
+            recommendation = "BUY TODAY" if d_metrics.get('Silent_Qualified') else "WATCH"
+        else:
+            signal_strength = "FORMING 👀"
+            recommendation = "WATCH"
+
+        signal = {
+            'Symbol': symbol,
+            'Sector': self.SECTOR_MAP.get(symbol, 'OTHER'),
+            'Horizon': 'SILENT',
+            'LTP': round(cp, 2),
+            'Score': quality_score,
+            'Strength': signal_strength,
+            'AI_Summary': d_metrics.get('Silent_Rationale', 'Silent accumulation footprint detected.'),
+            'Liquidity': liquidity_label,
+            'Trend': "BULL" if cp > ema50 else "BEAR",
+            'Distance50': f"{pct_from_p50:.2f}%",
+            'Distance250': f"{pct_from_p250:.2f}%" if not pd.isna(pct_from_p250) else "N/A",
+            'EMA50_Distance': round(ema50_distance, 2),
+            'EMA20_Distance': round(((cp - ema20) / ema20) * 100, 2) if ema20 else 0.0,
+            'RS_Pctl': round(rs_percentile, 1),
+            'Sector_RS': round(sector_rs, 1),
+            'ADX': round(adx_val, 1),
+            'RSI': round(rsi_val, 1),
+            # Silent setups have no intraday volume burst by construction; the
+            # column is kept at 1.0 so downstream risk banding stays comparable.
+            'Vol_Ratio': round(float(d_metrics.get('Silent_Volume_Participation', 1.0) or 1.0), 2),
+            'Breakout250': "YES" if is_breakout else "NO",
+            'Breakout_Quality': 100 if is_breakout else 50,
+            'Trigger': round(cp, 2),
+            'Stop': round(stop_loss_price, 2),
+            'Target': round(target_price, 2),
+            'Risk_Reward': round(risk_reward, 2),
+            'Qty': quantity,
+            'Cap_Req': f"₹{int(capital_required):,}",
+            # The daily report groups rows by this field; SILENT has no
+            # intraday execution layer, so the grade drives the bucket.
+            'Execution_Recommendation': recommendation,
+        }
+        signal.update({k: v for k, v in d_metrics.items()
+                       if k.startswith('Silent_') and k != 'Silent_Components'})
+        return signal
+
     def scan(self, symbol: str, df_daily: pd.DataFrame, df_15min: pd.DataFrame,
              rs_percentile: float = 50.0, sector_rs: float = 50.0, regime_mult: float = 1.0,
              strategy: str = 'SWING', daily_metrics: Optional[Dict[str, Any]] = None,
              df_5min: Optional[pd.DataFrame] = None) -> Optional[Dict[str, Any]]:
         """Runs the multi-factor scoring model and calculates position sizing."""
         d_metrics = daily_metrics if daily_metrics is not None else self.compute_daily_metrics(df_daily)
-        if d_metrics is None or len(df_15min) < 3: return None
+        if d_metrics is None: return None
+
+        # SILENT is a daily-structure strategy: it deliberately ignores the
+        # intraday volume burst the momentum path depends on.
+        if strategy.upper() == 'SILENT':
+            return self.scan_silent(symbol, df_daily, d_metrics,
+                                    rs_percentile=rs_percentile, sector_rs=sector_rs,
+                                    regime_mult=regime_mult)
+
+        if len(df_15min) < 3: return None
             
         # Bulletproof .get() methods to prevent KeyErrors
         cp = d_metrics.get('Close', 0)

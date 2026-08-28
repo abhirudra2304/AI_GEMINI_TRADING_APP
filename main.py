@@ -180,7 +180,7 @@ def get_cached_discovery_row(symbol: str, preferred_strategy: str = "SWING"):
     """Finds the full discovery data row for a symbol from any valid cache."""
     normalized_symbol = symbol.upper()
     # Start with the preferred strategy, then check others as a fallback.
-    for strategy in dict.fromkeys([preferred_strategy, "BTST", "SWING", "GAP"]):
+    for strategy in dict.fromkeys([preferred_strategy, "BTST", "SWING", "GAP", "SILENT"]):
         cache = DiscoveryCache()
         if not cache.is_cache_valid(strategy):
             continue
@@ -442,7 +442,7 @@ def run_cache_status(strategy: str = None):
         print_single_cache_status(strategy=strategy)
         return
 
-    for index, strategy_name in enumerate(["BTST", "SWING", "GAP"]):
+    for index, strategy_name in enumerate(["BTST", "SWING", "GAP", "SILENT"]):
         if index:
             print()
         print_single_cache_status(strategy=strategy_name)
@@ -458,15 +458,16 @@ def print_help():
     print("  python main.py status                                        # Run a system health check")
     print("Usage:")
     print("  python main.py analyze SYMBOL [--explain] [--holding]         # analyze one stock only")
-    print("  python main.py discover [BTST|SWING|GAP] [--force-refresh]   # refresh discovery cache only")
-    print("  python main.py cache [BTST|SWING|GAP]                        # show discovery cache metadata")
+    print("  python main.py discover [BTST|SWING|GAP|SILENT] [--force-refresh]   # refresh discovery cache only")
+    print("  python main.py cache [BTST|SWING|GAP|SILENT]                 # show discovery cache metadata")
     print("  python main.py profiler                                      # show the last run's API profiler report")
     print("  python main.py btst       # fast BTST scan from cached discovery")
     print("  python main.py swing      # fast SWING scan from cached discovery")
     print("  python main.py gap        # fast GAP scan from cached discovery")
+    print("  python main.py silent     # stealth accumulation scan (smooth, low-ATR uptrends)")
     print("  python main.py btst --force-refresh   # rebuild BTST cache, then scan")
     print("  python main.py report     # create report from last displayed signals")
-    print("  python main.py invalidate [BTST|SWING|GAP] # delete discovery cache")
+    print("  python main.py invalidate [BTST|SWING|GAP|SILENT] # delete discovery cache")
 
 
 def parse_cli(argv):
@@ -506,7 +507,7 @@ if __name__ == "__main__":
             run_cache_status(strategy=strategy)
         elif mode == "profiler":
             run_profiler_report()
-        elif mode in ["btst", "swing", "gap"]:
+        elif mode in ["btst", "swing", "gap", "silent"]:
             run_execution(strategy=mode.upper(), force_refresh=flags["force_refresh"])
             if _background_workers:
                 should_wait = True

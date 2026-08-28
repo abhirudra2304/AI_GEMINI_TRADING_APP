@@ -26,6 +26,7 @@ STRATEGY_DISCOVERY_CACHE_FILES = {
     "BTST": "discovery_cache_btst.pkl",
     "SWING": "discovery_cache_swing.pkl",
     "GAP": "discovery_cache_gap.pkl",
+    "SILENT": "discovery_cache_silent.pkl",
 }
 DEFAULT_LAST_SIGNALS_FILE = "last_signals.pkl"
 
@@ -516,7 +517,12 @@ def execute_macro_discovery(broker, scanner, strategy: str = 'SWING', force_refr
     nifty_df = broker.fetch_ohlcv('Nifty 50', 'ONE_DAY', 400, force_refresh=force_refresh, caller=caller, end_date=point_in_time)
     regime = scanner.compute_market_regime(nifty_df)
     
-    lookback_window = config.Discovery.LOOKBACK_BTST if strategy in ['BTST', 'GAP'] else config.Discovery.LOOKBACK_SWING
+    if strategy in ['BTST', 'GAP']:
+        lookback_window = config.Discovery.LOOKBACK_BTST
+    elif strategy == 'SILENT':
+        lookback_window = config.Discovery.LOOKBACK_SILENT
+    else:
+        lookback_window = config.Discovery.LOOKBACK_SWING
     current_universe = fetch_dynamic_universe(config.Universe.TARGET_UNIVERSE)
     available_universe = broker.filter_available_symbols(current_universe)
     if not available_universe: return [], pd.DataFrame()
@@ -570,8 +576,19 @@ def execute_macro_discovery(broker, scanner, strategy: str = 'SWING', force_refr
             # Circuit Breaker: High Volume Reversal
             is_volume_shock = (strategy in ['BTST', 'GAP']) and (daily_vol_ratio > config.Discovery.VOL_SHOCK_RATIO_DAILY) and (rsi > config.Discovery.RSI_THRESHOLD - 10)
 
+            is_silent = strategy == 'SILENT'
+            silent_score = metrics.get('Silent_Score')
+
+            if is_silent:
+                # Stealth accumulation is judged on daily structure, not on the
+                # momentum floors: a stock drifting up 1% a day sits mid-pack on
+                # RS and rarely prints an overbought RSI.
+                if silent_score is None or pd.isna(silent_score) or silent_score < config.Silent.SCORE_WATCH:
+                    return None
+                if cp < metrics.get('EMA50', cp) or rsi < config.Silent.RSI_THRESHOLD or rs_pctl < config.Silent.RS_PCT_THRESHOLD:
+                    return None
             # Enforce Hard Trend Filters ONLY if a Volume Shock is NOT present
-            if not is_volume_shock:
+            elif not is_volume_shock:
                 safe_ema20 = metrics.get('EMA20', metrics.get('EMA50', cp))
                 trend_baseline = safe_ema20 if regime['label'] in ['BEARISH_RECOVERY', 'EXTREME_BEAR'] else metrics.get('EMA50', cp)
                 if cp < trend_baseline or rs_pctl < config.Discovery.RS_PCT_THRESHOLD or rsi < config.Discovery.RSI_THRESHOLD:
@@ -596,6 +613,11 @@ def execute_macro_discovery(broker, scanner, strategy: str = 'SWING', force_refr
             ) / distance_divisor
             rank_score = min(rank_score, 100)
 
+            if is_silent:
+                # Rank purely on the smoothness of the trend, lightly tilted by
+                # relative strength so leaders surface first among equals.
+                rank_score = min(100, (float(silent_score) * 0.85) + (min(rs_pctl, 100) * 0.15))
+
             safe_ema20_delta = metrics.get('EMA20', cp)
 
             return {
@@ -611,6 +633,7 @@ def execute_macro_discovery(broker, scanner, strategy: str = 'SWING', force_refr
                 'EMA50': metrics.get('EMA50', cp),
                 'EMA200': metrics.get('EMA200', cp),
                 'RSI': rsi,
+                'Silent_Score': float(silent_score) if silent_score is not None and not pd.isna(silent_score) else float('nan'),
                 'Trend': 'BULL' if cp > (metrics.get('EMA50', cp) or cp) else 'BEAR',
                 'Liquidity': 'HIGH' if metrics.get('Avg_Traded_Value_20d', 0) > 100_000_000 else 'LOW',
                 'Market_Regime': regime['label'],
@@ -641,7 +664,10 @@ def execute_macro_discovery(broker, scanner, strategy: str = 'SWING', force_refr
     print("\n" + "="*80)
     print(f"🏆 TOP 10 SCANNED STOCKS RANKING (DISCOVERY PHASE)")
     df_slice = discovered_df.head(10)
-    df_str = df_slice[['Symbol', 'Sector', 'RS_Pctl', 'ADX', 'Rank_Score']].to_string(index=False)
+    ranking_cols = ['Symbol', 'Sector', 'RS_Pctl', 'ADX', 'Rank_Score']
+    if strategy == 'SILENT' and 'Silent_Score' in df_slice.columns:
+        ranking_cols.insert(4, 'Silent_Score')
+    df_str = df_slice[ranking_cols].to_string(index=False)
     print(format_terminal_table(df_str, df_slice))
     print("="*80 + "\n")
     
@@ -660,9 +686,11 @@ def _scan_for_confirmation_signals(broker, scanner, watchlist, discovered_df, re
     def scan_stock(stock):
         try:
             if shutdown_manager.is_shutdown(): return None
-            df_15min = broker.fetch_ohlcv(stock, 'FIFTEEN_MINUTE', 5, force_refresh=force_refresh, caller=caller, end_date=point_in_time)
+            is_silent = strategy.upper() == 'SILENT'
+            # SILENT reads daily structure only, so the intraday fetches are skipped.
+            df_15min = pd.DataFrame() if is_silent else broker.fetch_ohlcv(stock, 'FIFTEEN_MINUTE', 5, force_refresh=force_refresh, caller=caller, end_date=point_in_time)
             df_5min = broker.fetch_ohlcv(stock, 'FIVE_MINUTE', 5, force_refresh=force_refresh, caller=caller, end_date=point_in_time) if strategy.upper() in ['BTST', 'GAP'] else pd.DataFrame()
-            if not df_15min.empty and stock in discovered_df['Symbol'].values:
+            if (is_silent or not df_15min.empty) and stock in discovered_df['Symbol'].values:
                 s_row = discovered_df[discovered_df['Symbol'] == stock].iloc[0]
                 df_daily = s_row.get('_Daily_DF', pd.DataFrame())
                 daily_metrics = s_row.get('_Daily_Metrics')
@@ -880,7 +908,13 @@ def run_manual_scan(broker, scanner, watchlist, discovered_df, strategy: str = '
         return pd.DataFrame()
 
     df_signals = add_decision_scores(pd.DataFrame(signals_triggered))
-    if strategy.upper() in ['BTST', 'GAP'] and 'BTST_Final_Score' in df_signals.columns:
+    if strategy.upper() == 'SILENT':
+        # add_decision_scores deliberately rewards *less* crowded momentum
+        # setups by inverting Score, which would rank the quietest accumulation
+        # last. Silent signals are ranked on their own footprint score instead.
+        df_signals['Decision_Score'] = df_signals['Score']
+        df_signals = df_signals.sort_values(by='Score', ascending=False)
+    elif strategy.upper() in ['BTST', 'GAP'] and 'BTST_Final_Score' in df_signals.columns:
         df_signals = df_signals.sort_values(by='BTST_Final_Score', ascending=False)
     else:
         df_signals = add_decision_scores(pd.DataFrame(signals_triggered))
