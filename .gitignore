@@ -67,3 +67,25 @@ profiler_stats.pkl
 pocket fm/
 
 main.pid
+
+# --- Generated scan artifacts (regenerate on every run; never source of truth) ---
+momentum_report_*.csv
+momentum_report_*.json
+momentum_report_*.parquet
+emfb_report_*.csv
+emfb_report_*.json
+emfb_report_*.parquet
+gap_scan_candidates.csv
+grind_candidates.csv
+symbol_reliability.csv
+volume_surge_candidates.csv
+universe_expansion_candidates.csv
+bhavcopy_validation_*.csv
+
+# --- Downloaded market data caches (large, re-fetchable) ---
+bhavcopy_cache/
+charts/
+_diagnostic_scans/
+
+# --- Database backups ---
+*.pre-cleanup-backup
