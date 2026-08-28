@@ -22,6 +22,7 @@ class LifecycleManager:
             self._shutdown_event = threading.Event()
             self._callbacks: List[Tuple[Callable[..., Any], Tuple[Any, ...], Dict[str, Any]]] = []
             self._is_shutting_down = False
+            self._background_workers: List[threading.Thread] = []
             self.register_signal_handlers()
 
     @property
@@ -43,6 +44,23 @@ class LifecycleManager:
 
         logger.debug(f"Registering cleanup callback: {callback.__name__}")
         self._callbacks.append((callback, args, kwargs))
+
+    def register_worker(self, worker: threading.Thread):
+        """Register a background worker thread to be joined on shutdown."""
+        if not isinstance(worker, threading.Thread):
+            raise TypeError("Only threading.Thread objects can be registered as workers.")
+        self._background_workers.append(worker)
+
+    def join_background_workers(self):
+        """Joins all registered background worker threads."""
+        print("Stopping background workers...")
+        logger.info("Waiting for background report generator to finish...")
+        for worker in self._background_workers:
+            worker.join(timeout=30)  # Wait for 30 seconds max
+            if worker.is_alive():
+                logger.warning(f"Background worker {worker.name} did not terminate in time.")
+        print("Background workers stopped.")
+        logger.info("Background workers stopped.")
 
     def _execute_callbacks(self):
         """Execute all registered callbacks in reverse order."""
@@ -86,6 +104,7 @@ class LifecycleManager:
         """Registers signal handlers for SIGINT and SIGTERM."""
         signal.signal(signal.SIGINT, self.initiate_shutdown)
         signal.signal(signal.SIGTERM, self.initiate_shutdown)
+        self.register(self.join_background_workers)
 
 # Singleton instance
 shutdown_manager = LifecycleManager()

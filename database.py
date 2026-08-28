@@ -1,4 +1,5 @@
 import sqlite3
+import json
 import logging
 import pandas as pd
 from datetime import datetime
@@ -12,6 +13,19 @@ class SignalDB:
     def __init__(self, db_path: str = 'signals.db'):
         self.db_path = db_path
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
+        # 2026-08-21: every scan path (momentum, emfb, orchestrator, historical
+        # generator) instantiates its own SignalDB() and writes to the same
+        # signals.db/reports.db file - under SQLite's default rollback-journal
+        # mode a writer blocks all readers/writers, so overlapping runs (e.g.
+        # a manual scan still finishing when Prewarm/EOD starts) risk a
+        # "database is locked" exception on whichever one loses the race.
+        # WAL lets readers and a writer proceed concurrently, and the
+        # busy_timeout makes any remaining brief contention retry instead of
+        # failing immediately. WAL mode is stored in the db file itself, so
+        # this only needs to run once per file, but it's cheap to set here
+        # every time (a no-op after the first).
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA busy_timeout=5000")
         self._init_db()
         shutdown_manager.register(self.close)
 
@@ -32,6 +46,31 @@ class SignalDB:
             score REAL, rs_pctl REAL, sector_rs REAL, adx REAL, vol_ratio REAL, entry REAL, stop REAL, target REAL,
             EMFB_Score REAL, Confidence TEXT, RS_vs_Nifty REAL, RS_vs_Sector REAL, Recovery REAL,
             Closing REAL, VWAP_Score REAL, Last_Hour_Vol REAL, Breakout_Score REAL, Reason TEXT
+        )
+        """)
+
+        # 2026-08-25: from the "check-sheet" trade-setup qualification checklist
+        # (check_sheet_logger.py, integrated from a reviewed Antigravity worktree
+        # build) - a separate audit trail from `signals`, one row per manually
+        # evaluated ticker, not per scan-produced candidate.
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS check_sheet_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp DATETIME,
+            symbol TEXT,
+            strategy TEXT,
+            total_score REAL,
+            max_score REAL,
+            percentage REAL,
+            verdict TEXT,
+            veto_count INTEGER,
+            macro_score REAL,
+            rs_score REAL,
+            technical_score REAL,
+            volume_score REAL,
+            breakout_score REAL,
+            risk_score REAL,
+            details_json TEXT
         )
         """)
         self.conn.commit()
@@ -134,6 +173,49 @@ class SignalDB:
 
         # Append data
         df.to_sql(table_name, self.conn, if_exists='append', index=False)
+
+    def log_check_sheet(self, cs) -> None:
+        """Logs a CheckSheet object (or its .to_dict()) to check_sheet_logs."""
+        try:
+            cursor = self.conn.cursor()
+            if hasattr(cs, 'to_dict'):
+                data = cs.to_dict()
+            elif isinstance(cs, dict):
+                data = cs
+            else:
+                return
+
+            pillar_scores = data.get('pillar_scores', {})
+            sql = """
+            INSERT INTO check_sheet_logs (
+                timestamp, symbol, strategy, total_score, max_score, percentage,
+                verdict, veto_count, macro_score, rs_score, technical_score,
+                volume_score, breakout_score, risk_score, details_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            cursor.execute(sql, (
+                data.get('timestamp', datetime.now(config.MARKET_TZ).isoformat(timespec='seconds')),
+                data.get('symbol'),
+                data.get('strategy', 'SWING'),
+                float(data.get('total_score', 0.0)),
+                float(data.get('max_possible_score', 100.0)),
+                float(data.get('percentage', 0.0)),
+                str(data.get('verdict', '')),
+                len(data.get('vetoes', [])),
+                float(pillar_scores.get('Market & Macro Regime', 0.0)),
+                float(pillar_scores.get('Relative Strength & Sector Leadership', 0.0)),
+                float(pillar_scores.get('Technical Trend & Momentum Structure', 0.0)),
+                float(pillar_scores.get('Volume & Institutional Flow', 0.0)),
+                float(pillar_scores.get('Price Action & Breakout Setup', 0.0)),
+                float(pillar_scores.get('Risk-to-Reward & Trade Safety', 0.0)),
+                json.dumps(data) if isinstance(data, dict) else str(data)
+            ))
+            self.conn.commit()
+        except (sqlite3.ProgrammingError, sqlite3.OperationalError) as e:
+            if "closed" in str(e).lower():
+                logger.warning("Database already closed, could not log check sheet.")
+            else:
+                logger.error(f"Database error logging check sheet: {e}", exc_info=True)
 
     def close(self):
         if self.conn:

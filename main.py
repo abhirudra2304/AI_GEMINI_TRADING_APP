@@ -127,7 +127,15 @@ def run_execution(strategy: str = "BTST", force_refresh: bool = False):
 def _print_top5(title: str, df: pd.DataFrame, score_col: str, cols: list):
     print(f"\n{'-'*80}\n🏆 TOP 5 {title}\n{'-'*80}")
     if df.empty:
-        print("  (no signals)")
+        if df.attrs.get('phase1_unavailable'):
+            print(
+                "  (no signals - Phase 1 discovery cache was unavailable/stale, so this "
+                "stage never actually scanned candidates today. NOT the same as a quiet "
+                "market. Run `python main.py discover <strategy>` to refresh, or check "
+                "logs/prewarm_*.log for why today's Prewarm didn't.)"
+            )
+        else:
+            print("  (no signals)")
         return
     ranked = df.sort_values(by=score_col, ascending=False) if score_col in df.columns else df
     slice_df = ranked[[c for c in cols if c in ranked.columns]].head(5)
@@ -250,6 +258,49 @@ def run_eod():
         print(f"\n{'-'*80}\n⚠️  STAGE FAILURES (results above reflect only the stages that succeeded)\n{'-'*80}")
         for stage, err in stage_errors.items():
             print(f"  {stage}: {err}")
+
+    # Google Sheets logging (2026-08-25) - append today's BTST/SWING/EMFB
+    # picks as rows to the shared sheet (see sheets_logger.py) so history
+    # accumulates day over day for later trend analysis. Alert-only, same
+    # pattern as the momentum-drop check below - a Sheets/network hiccup
+    # must never block or fail the EOD report itself.
+    try:
+        from sheets_logger import log_scan_results
+
+        def _df_to_sheet_rows(df: pd.DataFrame, category: str, score_col: str) -> list:
+            rows = []
+            for _, row in df.iterrows():
+                rows.append({
+                    "ticker": row.get('Symbol', ''),
+                    "category": category,
+                    "price": row.get('Trigger', ''),
+                    "volume": row.get('Volume', ''),
+                    "score": row.get(score_col, ''),
+                    "notes": row.get('Reason', row.get('Strength', '')),
+                })
+            return rows
+
+        sheet_rows = (
+            _df_to_sheet_rows(results.get('BTST', pd.DataFrame()), 'btst', 'BTST_Final_Score')
+            + _df_to_sheet_rows(results.get('SWING', pd.DataFrame()), 'swing', 'Decision_Score')
+            + _df_to_sheet_rows(results.get('EMFB', pd.DataFrame()), 'emfb', 'EMFB_Score')
+        )
+        log_scan_results(sheet_rows)
+    except Exception as e:
+        print(f"\n⚠️ Sheets logging skipped due to an error: {e}")
+
+    # Momentum-drop alert for user-held positions (watchlist_positions.yaml).
+    # Alert-only, never blocks the EOD report if it fails - see
+    # momentum_alert.py's docstring for the design rationale.
+    try:
+        from momentum_alert import check_momentum_drops
+        alerts = check_momentum_drops(broker)
+        if not alerts.empty:
+            print(f"\n{'-'*80}\n🚨 MOMENTUM DROP ALERT (EMA20 broken on expanding volume)\n{'-'*80}")
+            print(alerts.to_string(index=False))
+            print(f"{'-'*80}")
+    except Exception as e:
+        print(f"\n⚠️ Momentum alert check skipped due to an error: {e}")
 
     print("=" * 80 + "\n")
 
@@ -662,7 +713,7 @@ def _build_analysis_report(symbol: str, signal: Optional[dict], daily_metrics: d
     return report_data, ranked_df
 
 
-def run_analyze(symbol: str, explain: bool = False, holding: bool = False, force_refresh: bool = False):
+def run_analyze(symbol: str, explain: bool = False, holding: bool = False, force_refresh: bool = False, checksheet: bool = False):
     profiler.reset()
     symbol = symbol.strip().upper()
     if not symbol:
@@ -705,13 +756,144 @@ def run_analyze(symbol: str, explain: bool = False, holding: bool = False, force
     )
     _print_analysis_report(report_data)
 
+    # 3b. Recent Corporate Catalysts (NSE Disclosures + Gemini AI)
+    try:
+        from nse_announcements import fetch_symbol_catalysts
+        catalysts = fetch_symbol_catalysts(symbol, lookback_days=7, use_ai=True)
+        if catalysts:
+            print("\n📰 RECENT CORPORATE CATALYSTS (NSE Disclosures + Gemini AI)")
+            sentiment_icons = {'BULLISH': '🟢', 'BEARISH': '🔴', 'NEUTRAL': '⚪'}
+            for cat in catalysts[:3]:
+                score = cat.get('AI_Catalyst_Score')
+                sent = cat.get('AI_Sentiment', 'NEUTRAL')
+                icon = sentiment_icons.get(sent, '⚪')
+                mag = cat.get('AI_Magnitude', 'MODERATE')
+                score_str = f"Score {score:.1f}/10 ({mag})" if score else cat.get('Materiality', 'MEDIUM')
+                takeaway = cat.get('AI_Takeaway') or cat.get('Summary', '')[:120]
+                print(f"  {icon} [{score_str}] {cat.get('Category', '')}: {takeaway}")
+            print("-" * 80)
+    except Exception as e:
+        logger.debug(f"Symbol catalyst lookup skipped: {e}")
+
+    # 3c. Multimodal Visual Chart AI (Minervini VCP & Base Geometry)
+    try:
+        from chart_ai import analyze_symbol_chart
+        chart_res = analyze_symbol_chart(analysis_data.df_daily, symbol, save_image=True)
+        if chart_res and chart_res.get('pattern_type') not in ['NO_DATA', 'UNKNOWN']:
+            v_score = chart_res.get('visual_quality_score', 5.0)
+            verdict = chart_res.get('visual_verdict', 'DEVELOPING_BASE')
+            pattern = chart_res.get('pattern_type', 'UNKNOWN')
+            vcp = chart_res.get('vcp_contractions', 'N/A')
+            vol = chart_res.get('volume_signature', 'CHOPPY')
+            pivot = chart_res.get('key_pivot_price')
+            takeaway = chart_res.get('one_line_takeaway', '')
+            chart_path = chart_res.get('chart_path')
+
+            verdict_icon = '🟢' if 'PRIME' in verdict else ('🟡' if 'DEVELOPING' in verdict else '🔴')
+            print("\n🎨 GEMINI 2.5 VISUAL CHART AI (Minervini VCP & Base Geometry)")
+            print(f"  {verdict_icon} Visual Quality Score:  {v_score:.1f} / 10.0  ({verdict})")
+            print(f"  📐 Base Pattern:           {pattern}")
+            print(f"  🔄 VCP Contractions:       {vcp}")
+            print(f"  📊 Volume Signature:       {vol}")
+            if pivot:
+                print(f"  🎯 Key Pivot Breakout:     ₹{pivot:.2f}")
+            print(f"  💡 Visual Rationale:       {takeaway}")
+            if chart_path:
+                print(f"  🖼️  Chart Saved:            {chart_path}")
+            print("-" * 80)
+    except Exception as e:
+        logger.debug(f"Visual Chart AI analysis skipped: {e}")
+
     # 4. Handle optional flags and cleanup
     if explain and not ranked_df.empty:
         explain_decision_score(ranked_df.iloc[0])
 
+    if checksheet:
+        from check_sheet_logger import CheckSheetLogger
+        CheckSheetLogger().evaluate_and_log(
+            symbol=symbol,
+            signal=signal,
+            daily_metrics=analysis_data.daily_metrics,
+            df_15min=analysis_data.df_15min,
+            df_daily=analysis_data.df_daily,
+            nifty_df=analysis_data.nifty_df,
+            rs_percentile=analysis_data.rs_percentile,
+            sector_rs=analysis_data.sector_rs,
+            regime_mult=regime["multiplier"],
+            strategy="SWING",
+            display=True,
+            persist_db=True,
+            save_file=True,
+        )
+
     profiler.save_report()
     profiler.print_report()
     return ranked_df
+
+
+def run_check_sheet(symbol: str, strategy: str = "SWING", force_refresh: bool = False, explain: bool = False):
+    """
+    Evaluates and displays a systematic 6-pillar Check Sheet for a single ticker,
+    persists the audit log into SQLite (check_sheet_logs table), and exports JSON.
+    """
+    profiler.reset()
+    symbol = symbol.strip().upper()
+    strategy = strategy.strip().upper()
+    if not symbol:
+        print("⚠️ Please provide a symbol. Example: python main.py check-sheet HAL")
+        return None
+
+    print(f"📋 Generating {strategy} Check Sheet for {symbol}...")
+    broker, scanner = build_runtime()
+
+    analysis_data = _get_analysis_data(broker, scanner, symbol, force_refresh)
+    if analysis_data is None:
+        print(f"⚠️ Could not assemble necessary candle and market data for {symbol}.")
+        profiler.save_report()
+        profiler.print_report()
+        return None
+
+    regime = scanner.compute_market_regime(analysis_data.nifty_df)
+    live_close = float(analysis_data.df_15min['Close'].iloc[-1]) if not analysis_data.df_15min.empty else None
+    signal = scanner.scan(
+        symbol,
+        analysis_data.df_daily,
+        analysis_data.df_15min,
+        rs_percentile=analysis_data.rs_percentile,
+        sector_rs=analysis_data.sector_rs,
+        regime_mult=regime["multiplier"],
+        strategy=strategy,
+        daily_metrics=analysis_data.daily_metrics,
+        live_close=live_close,
+    )
+
+    from check_sheet_logger import CheckSheetLogger
+    cs_logger = CheckSheetLogger()
+    check_sheet = cs_logger.evaluate_and_log(
+        symbol=symbol,
+        signal=signal,
+        daily_metrics=analysis_data.daily_metrics,
+        df_15min=analysis_data.df_15min,
+        df_daily=analysis_data.df_daily,
+        nifty_df=analysis_data.nifty_df,
+        rs_percentile=analysis_data.rs_percentile,
+        sector_rs=analysis_data.sector_rs,
+        regime_mult=regime["multiplier"],
+        market_regime_info=regime,
+        strategy=strategy,
+        display=True,
+        persist_db=True,
+        save_file=True,
+    )
+
+    if explain and signal:
+        ranked_df = add_decision_scores(pd.DataFrame([signal]))
+        if not ranked_df.empty:
+            explain_decision_score(ranked_df.iloc[0])
+
+    profiler.save_report()
+    profiler.print_report()
+    return check_sheet
 
 
 def print_single_cache_status(strategy: Optional[str] = None):
@@ -759,7 +941,8 @@ def run_profiler_report():
 def print_help():
     print("  python main.py status                                        # Run a system health check")
     print("Usage:")
-    print("  python main.py analyze SYMBOL [--explain] [--holding]        # analyze one stock only")
+    print("  python main.py analyze SYMBOL [--explain] [--holding] [--checksheet]  # analyze one stock only")
+    print("  python main.py check-sheet SYMBOL [SWING|BTST|EMFB]          # evaluate and log 6-pillar trade setup check sheet")
     print("  python main.py discover [BTST|SWING|GAP|INTRADAY] [--force-refresh]   # refresh discovery cache only")
     print("  python main.py cache [BTST|SWING|GAP|INTRADAY]               # show discovery cache metadata")
     print("  python main.py profiler                                      # show the last run's API profiler report")
@@ -775,16 +958,63 @@ def print_help():
     print(
         "  python main.py emfb [--force-refresh]                        # run Emerging Momentum/Fresh Breakout scan (cached ~1hr; --force-refresh bypasses)"
     )
+    print(
+        "  python main.py momentum [--force-refresh]                    # run always-on momentum scan (no regime gate; cached per momentum_config.yaml; --force-refresh bypasses)"
+    )
+    print(
+        "  python main.py trigger-status [emfb|momentum|<path.csv>]     # check an existing report's Trigger/Stop/Target against live prices since it ran"
+    )
+    print(
+        "  python main.py history SYMBOL [emfb|momentum]                # show a symbol's score/rank history across all past reports"
+    )
+    print(
+        "  python main.py watchlist [emfb|momentum]                     # diff the two most recent reports: new / dropped / continuing symbols"
+    )
+    print(
+        "  python main.py scorecard [emfb|momentum]                     # win/loss track record across every past report (hit target vs stopped out)"
+    )
+    print(
+        "  python main.py actionable [emfb|momentum]                    # relabel the latest report's Confidence tiers by their PROVEN win rate (run scorecard first)"
+    )
+    print(
+        "  python main.py extension [emfb|momentum]                     # flag signals that were already overextended (far above EMA20) at signal time"
+    )
+    print(
+        "  python main.py news [emfb|momentum] [--ai]                   # NSE corporate announcements; --ai enables Gemini Tier-2 catalyst scoring"
+    )
+    print(
+        "  python main.py fitness                                       # score the universe for SHORT-TERM trading fitness (liquidity/F&O/ATR-range/trend), tag BTST/SWING-eligible"
+    )
+    print(
+        "  python main.py expand                                        # score external F&O names (not in universe) on the same fitness criteria; propose add/replace swaps"
+    )
+    print(
+        "  python main.py stockscan [momentum|emfb]                     # MASTER: scan -> fitness -> actionable -> extension -> catalyst; decision shortlist before 15:20"
+    )
+    print(
+        "  python main.py surge                                         # market-wide volume+price surge scan (whole bhavcopy universe); flags NEEDS_INVESTIGATION for Claude to web-search"
+    )
+    print(
+        "  python main.py gapscan                                       # today's open vs prior close, curated universe; run near 09:15, ranks gap-up/gap-down"
+    )
+    print(
+        "  python main.py reliability                                   # per-symbol win rate/avg return from resolved trade history; flags real repeated winners/losers"
+    )
+    print(
+        "  python main.py grind                                         # multi-week steady movers the 1-day RS ranking misses (reads cache, no API calls)"
+    )
     print("  python main.py eod [--force-refresh]                         # run BTST+SWING+EMFB, print consolidated Top 5 report")
     print("  python main.py invalidate [BTST|SWING|GAP|INTRADAY]          # delete discovery cache")
     print("  python main.py refresh-beta [--force-refresh]                # recompute BETA_REGISTRY from live rolling beta (once/day; --force-refresh ignores that)")
 
 def parse_cli(argv):
-    known_flags = {"--force-refresh", "--explain", "--holding"}
+    known_flags = {"--force-refresh", "--explain", "--holding", "--ai", "--checksheet"}
     flags = {
         "force_refresh": "--force-refresh" in argv,
         "explain": "--explain" in argv,
         "holding": "--holding" in argv,
+        "ai": "--ai" in argv,
+        "checksheet": "--checksheet" in argv,
     }
     positionals = [arg for arg in argv if not arg.startswith("--")]
     unknown_flags = [arg for arg in argv if arg.startswith("--") and arg not in known_flags]
@@ -877,6 +1107,10 @@ if __name__ == "__main__":
     try:
         if mode == "status":
             run_system_check()
+        elif mode in ["check-sheet", "checksheet", "check_sheet"]:
+            symbol = positionals[1] if len(positionals) > 1 else ""
+            strategy = positionals[2].strip().upper() if len(positionals) > 2 else "SWING"
+            run_check_sheet(symbol, strategy=strategy, force_refresh=flags["force_refresh"], explain=flags["explain"])
         elif mode == "download-constituents":
             index_name = "nifty500"
             if len(positionals) > 1:
@@ -895,7 +1129,7 @@ if __name__ == "__main__":
             run_discovery(strategy=strategy, force_refresh=flags["force_refresh"])
         elif mode == "analyze":
             symbol = positionals[1] if len(positionals) > 1 else ""
-            run_analyze(symbol, explain=flags["explain"], holding=flags["holding"], force_refresh=flags["force_refresh"])
+            run_analyze(symbol, explain=flags["explain"], holding=flags["holding"], force_refresh=flags["force_refresh"], checksheet=flags["checksheet"])
         elif mode == "cache":
             strategy = positionals[1].strip().upper() if len(positionals) > 1 else None
             run_cache_status(strategy=strategy)
@@ -907,6 +1141,88 @@ if __name__ == "__main__":
         elif mode == "emfb":
             from emfb import run_emfb_scan
             run_emfb_scan(force_refresh=flags["force_refresh"])
+        elif mode == "momentum":
+            from momentum_scanner import run_momentum_scan
+            run_momentum_scan(force_refresh=flags["force_refresh"])
+        elif mode == "trigger-status":
+            from trigger_status import find_latest_report, check_trigger_status, print_trigger_status
+            report_type = positionals[1].strip().lower() if len(positionals) > 1 else "emfb"
+            if report_type in ("emfb", "momentum"):
+                report_path = find_latest_report(report_type)
+                if report_path is None:
+                    print(f"⚠️ No {report_type} report files found.")
+                else:
+                    print_trigger_status(check_trigger_status(report_path))
+            else:
+                # Treat the argument as an explicit file path instead of a report type.
+                print_trigger_status(check_trigger_status(positionals[1]))
+        elif mode == "history":
+            from symbol_history import symbol_history, print_symbol_history
+            symbol = positionals[1] if len(positionals) > 1 else ""
+            report_type = positionals[2].strip().lower() if len(positionals) > 2 else "emfb"
+            print_symbol_history(symbol, symbol_history(symbol, report_type))
+        elif mode == "watchlist":
+            from symbol_history import watchlist_diff, print_watchlist_diff
+            report_type = positionals[1].strip().lower() if len(positionals) > 1 else "emfb"
+            print_watchlist_diff(watchlist_diff(report_type))
+        elif mode == "scorecard":
+            from performance_tracker import build_scorecard, summarize_scorecard, print_scorecard, save_tier_performance
+            report_type = positionals[1].strip().lower() if len(positionals) > 1 else "emfb"
+            scorecard = build_scorecard(report_type)
+            summary = summarize_scorecard(scorecard)
+            print_scorecard(scorecard, summary)
+            save_tier_performance(report_type, summary)
+        elif mode == "actionable":
+            from trigger_status import find_latest_report
+            from signal_quality import annotate_actionability, print_actionable_report
+            report_type = positionals[1].strip().lower() if len(positionals) > 1 else "emfb"
+            report_path = find_latest_report(report_type)
+            if report_path is None:
+                print(f"⚠️ No {report_type} report files found.")
+            else:
+                import pandas as pd
+                report_df = pd.read_csv(report_path)
+                print_actionable_report(annotate_actionability(report_df, report_type))
+        elif mode == "extension":
+            from trigger_status import find_latest_report
+            from extension_score import annotate_extension, print_extension_report
+            report_type = positionals[1].strip().lower() if len(positionals) > 1 else "emfb"
+            report_path = find_latest_report(report_type)
+            if report_path is None:
+                print(f"⚠️ No {report_type} report files found.")
+            else:
+                import pandas as pd
+                report_df = pd.read_csv(report_path)
+                print_extension_report(annotate_extension(report_df))
+        elif mode == "news":
+            from nse_announcements import build_watchlist, print_watchlist
+            sub_pos = [p for p in positionals[1:] if p.lower() != "ai"]
+            report_type = sub_pos[0].strip().lower() if sub_pos else "emfb"
+            use_ai = flags.get("ai", False) or any(p.lower() == "ai" for p in positionals)
+            watchlist = build_watchlist(report_type=report_type, use_ai=use_ai)
+            print_watchlist(watchlist)
+        elif mode == "fitness":
+            from universe_fitness import build_universe_fitness, print_fitness_report
+            print_fitness_report(build_universe_fitness())
+        elif mode == "expand":
+            from universe_expansion import build_expansion_candidates, print_expansion_report
+            print_expansion_report(build_expansion_candidates())
+        elif mode == "surge":
+            from volume_surge_scanner import build_surge_report, print_surge_report
+            print_surge_report(build_surge_report())
+        elif mode == "gapscan":
+            from gap_scanner import build_gap_report, print_gap_report
+            print_gap_report(build_gap_report())
+        elif mode == "reliability":
+            from symbol_reliability import print_reliability_report
+            print_reliability_report()
+        elif mode == "grind":
+            from grind_scanner import build_grind_report, print_grind_report, find_latest_momentum_report
+            print_grind_report(build_grind_report(find_latest_momentum_report()))
+        elif mode in ("stockscan", "stock-scan"):
+            from stock_scan import run_stock_scan
+            rtype = positionals[1].strip().lower() if len(positionals) > 1 else "momentum"
+            run_stock_scan(report_type=rtype)
         elif mode == "eod":
             run_eod()
         elif mode == "live":

@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Optional
 from datetime import datetime
 import pandas as pd
@@ -14,6 +15,19 @@ from cache import DiscoveryCache, load_cached_discovery, save_topn_history, load
 from reporting import display_confirmation_results
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+root_logger = logging.getLogger()
+for _h in root_logger.handlers:
+    _h.setLevel(logging.INFO)  # keep console/app.log at INFO
+
+_debug_log_dir = os.path.join("logs", datetime.now().strftime("%Y-%m-%d"))
+os.makedirs(_debug_log_dir, exist_ok=True)
+_debug_handler = logging.FileHandler(os.path.join(_debug_log_dir, "debug.log"))
+_debug_handler.setLevel(logging.DEBUG)
+_debug_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(message)s'))
+root_logger.addHandler(_debug_handler)
+root_logger.setLevel(logging.DEBUG)  # let DEBUG records through to the debug handler; other handlers stay capped at INFO above
+
 logger = logging.getLogger(__name__)
 
 # NSE's Closing Auction Session (CAS) for F&O-eligible stocks runs 15:15-15:35;
@@ -245,8 +259,18 @@ def run_manual_scan(broker, scanner, watchlist, discovered_df, strategy: str = '
 
     return df_signals
 
-def run_fast_execution_scan(broker, scanner, strategy: str = 'BTST', top_n: int = 20, display: bool = True, force_refresh: bool = False, caller: str = "Unknown") -> pd.DataFrame:
-    """Phase 2 fast path: reuse daily discovery state and fetch only 15-minute candles."""
+def run_fast_execution_scan(broker, scanner, strategy: str = 'BTST', top_n: int = 20, display: bool = True, force_refresh: bool = False, caller: str = "Unknown", persist: bool = False) -> pd.DataFrame:
+    """Phase 2 fast path: reuse daily discovery state and fetch only 15-minute candles.
+
+    persist defaults to False because this function is also called every ~60s
+    by the live-monitoring loop (LiveScanner) during market hours - persisting
+    by default would write a duplicate signals.db row every cycle, all day.
+    2026-08-21: run_eod_scan (which runs once daily, not in a loop) now passes
+    persist=True explicitly, so BTST/SWING signals it finds are actually saved
+    for stock_scan.py to read - previously EOD's BTST/SWING results were never
+    persisted at all, so stockscan's shortlist (which only reads momentum/EMFB
+    reports) had no way to surface a strong BTST/SWING-only signal (the "KEI
+    problem", flagged 2026-08-12)."""
     watchlist, discovered_df = load_cached_discovery(strategy=strategy, top_n=top_n)
     if not watchlist:
         logger.warning(
@@ -255,9 +279,16 @@ def run_fast_execution_scan(broker, scanner, strategy: str = 'BTST', top_n: int 
             strategy,
             strategy,
         )
-        return pd.DataFrame()
+        # 2026-08-21: an empty result here is indistinguishable from "scanned
+        # everything, nothing qualified" in the EOD report unless flagged -
+        # this happens whenever Prewarm's Phase 1 discovery didn't run/refresh
+        # (e.g. lock collision with a concurrent scan), and looks identical to
+        # a genuinely quiet market day otherwise. See main.py's _print_top5.
+        empty = pd.DataFrame()
+        empty.attrs['phase1_unavailable'] = True
+        return empty
     logger.info(f"⚡ Fast execution scanner using top {len(watchlist)} cached symbols.")
-    return run_manual_scan(broker, scanner, watchlist, discovered_df, strategy=strategy, persist=False, display=display, force_refresh=force_refresh, caller=caller)
+    return run_manual_scan(broker, scanner, watchlist, discovered_df, strategy=strategy, persist=persist, display=display, force_refresh=force_refresh, caller=caller)
 
 
 def run_eod_scan(broker, scanner, top_n: int = 20, force_refresh: bool = False) -> dict:
@@ -291,11 +322,11 @@ def run_eod_scan(broker, scanner, top_n: int = 20, force_refresh: bool = False) 
 
     results['BTST'] = _run_stage(
         'BTST', run_fast_execution_scan, broker, scanner, strategy='BTST',
-        top_n=top_n, display=False, force_refresh=force_refresh, caller="EOD",
+        top_n=top_n, display=False, force_refresh=force_refresh, caller="EOD", persist=True,
     )
     results['SWING'] = _run_stage(
         'SWING', run_fast_execution_scan, broker, scanner, strategy='SWING',
-        top_n=top_n, display=False, force_refresh=force_refresh, caller="EOD",
+        top_n=top_n, display=False, force_refresh=force_refresh, caller="EOD", persist=True,
     )
     results['EMFB'] = _run_stage('EMFB', run_emfb_scan, broker=broker, force_refresh=force_refresh)
 

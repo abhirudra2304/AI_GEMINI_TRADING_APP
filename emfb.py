@@ -14,6 +14,7 @@ from database import SignalDB
 from scanner_engine import EMFBScanner
 from provider import ConstituentProvider
 from lifecycle_manager import shutdown_manager
+from earnings_verifier import apply_nse_earnings_fallback
 
 logger = logging.getLogger(__name__)
 
@@ -252,6 +253,12 @@ def _generate_report(df: pd.DataFrame, regime_reason: str):
     print(report_df.head(config.EMFB.REPORT_TOP_N).to_string(index=False))
     print("="*120)
 
+    try:
+        from sector_rotation import print_rs_only_rotation_report
+        print_rs_only_rotation_report(df)
+    except Exception as e:
+        logger.warning(f"Sector rotation section skipped due to an error: {e}", exc_info=True)
+
     # Save the full results to multiple formats
     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     base_filename = f"emfb_report_{timestamp_str}"
@@ -265,6 +272,12 @@ def _generate_report(df: pd.DataFrame, regime_reason: str):
         
         logger.info(f"EMFB reports successfully saved to {base_filename}.[csv, json, parquet] and reports.db")
     except Exception as e:
+        # Also print (not just log) - a silent reports.db write failure on
+        # 2026-07-31/2026-08-04 went unnoticed because it only surfaced via
+        # logger.error, which isn't guaranteed visible in every run context
+        # (e.g. scheduled-task log redirection). CSV/JSON/parquet still save
+        # fine even when this fails since they're written before this block.
+        print(f"⚠️ Failed to save EMFB reports: {e}")
         logger.error(f"Failed to save EMFB reports: {e}", exc_info=True)
 
 
@@ -445,6 +458,24 @@ def run_emfb_scan(broker: Optional[DataBroker] = None, force_refresh: bool = Fal
     logger.info("Stage 2: Ranking universe and calculating final scores...")
     metrics_df = pd.DataFrame(raw_metrics).replace([np.inf, -np.inf], np.nan).dropna(subset=['close'])
     final_df = scanner.rank_and_score_emfb(metrics_df, market_regime_label)
+    final_df = apply_nse_earnings_fallback(final_df)
+
+    # Informational-only Institutional_Score column (real NSE bhavcopy
+    # delivery data) - same convention as discovery.py's BTST/SWING output
+    # (see institutional_flow.compute_institutional_scores docstring for
+    # the validation history). NEVER used in ranking/sorting/filtering here
+    # either; NaN-safe, wrapped so a failure just leaves the column NaN.
+    try:
+        from institutional_flow import compute_institutional_scores
+        daily_by_symbol = {
+            sym: data_store.get(sym, {}).get('daily')
+            for sym in final_df['Symbol']
+        }
+        scores = compute_institutional_scores(daily_by_symbol)
+        final_df['Institutional_Score'] = final_df['Symbol'].map(scores)
+    except Exception as e:
+        logger.warning(f"Institutional_Score column skipped due to an error: {e}", exc_info=True)
+        final_df['Institutional_Score'] = float('nan')
 
     _generate_report(final_df, ", ".join(reasons))
     _generate_portfolio_summary(final_df)

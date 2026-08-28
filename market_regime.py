@@ -92,16 +92,23 @@ class MarketRegime:
 
     def _calculate_market_breadth(self) -> Dict[str, Any]:
         """Calculates market breadth using percentage of stocks above 50-DMA."""
-        if self.discovery_df is None or self.discovery_df.empty:
+        if self.discovery_df is None or self.discovery_df.empty or '_Daily_Metrics' not in self.discovery_df.columns:
             return {'stocks_above_50dma_pct': -1}
 
-        # The 'discovery_df' should already have EMA50 computed.
-        # It's assumed the 'Close' column from the daily dataframes has been merged.
-        if 'EMA50' not in self.discovery_df.columns or 'Close' not in self.discovery_df.columns:
-            return {'stocks_above_50dma_pct': -1}
+        above_50dma = 0
+        total_stocks = 0
 
-        above_50dma = (self.discovery_df['Close'] > self.discovery_df['EMA50']).sum()
-        total_stocks = len(self.discovery_df)
+        for metrics in self.discovery_df['_Daily_Metrics']:
+            if not isinstance(metrics, dict):
+                continue
+            
+            close = metrics.get('Close')
+            ema50 = metrics.get('EMA50')
+
+            if close is not None and ema50 is not None and not pd.isna(close) and not pd.isna(ema50):
+                total_stocks += 1
+                if close > ema50:
+                    above_50dma += 1
         
         if total_stocks == 0:
             return {'stocks_above_50dma_pct': 0}

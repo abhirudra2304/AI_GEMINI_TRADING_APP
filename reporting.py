@@ -44,7 +44,7 @@ def format_terminal_table(df_string: str, df: pd.DataFrame, num_rows: int = 3) -
         lines[i] = f"{row_color}{line}{reset_color}" if is_top else line
     return '\n'.join(lines)
 
-def export_to_pdf(df_signals, news_summary, filename):
+def export_to_pdf(df_signals, news_summary, filename, strategy: str = 'BTST'):
     # Attempt to install fpdf2 if it's missing. It's imported as 'fpdf'.
     fpdf_module = install_and_import('fpdf2', critical=False)
     if not fpdf_module:
@@ -59,12 +59,12 @@ def export_to_pdf(df_signals, news_summary, filename):
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.set_font("Helvetica", 'B', 16)
-    pdf.cell(200, 10, text="Institutional Stock Scanner Report", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C')
+    pdf.cell(200, 10, text=f"Institutional Stock Scanner Report - {strategy.upper()} SCAN", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C')
     pdf.set_font("Helvetica", '', 10)
     pdf.cell(200, 10, text=f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M')}", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C')
     pdf.ln(10)
     pdf.set_font("Helvetica", 'B', 12)
-    pdf.cell(200, 10, text="TOP CONFIRMED SETUPS:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(200, 10, text=f"TOP CONFIRMED {strategy.upper()} SETUPS:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_font("Courier", '', 8) 
     display_cols = ['Symbol', 'Sector', 'LTP', 'Score', 'Trigger', 'Stop', 'Target', 'Trend', 'Vol_Ratio', 'RS_Pctl', 'RSI']
     cols_to_show = [c for c in display_cols if c in df_signals.columns]
@@ -159,7 +159,11 @@ def export_eod_pdf(results: dict, filename: str, news_summary: Optional[str] = N
         pdf.cell(200, 10, text=title, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.set_font("Courier", '', 8)
         if df.empty:
-            pdf.cell(200, 5, text="(no signals)", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            if df.attrs.get('phase1_unavailable'):
+                msg = "(no signals - Phase 1 discovery cache was unavailable, stage never scanned. See logs/prewarm_*.log.)"
+            else:
+                msg = "(no signals)"
+            pdf.cell(200, 5, text=msg, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         else:
             ranked = df.sort_values(by=score_col, ascending=False) if score_col in df.columns else df
             cols_to_show = [c for c in cols if c in ranked.columns]
@@ -577,8 +581,8 @@ def run_report_pipeline(df_signals: pd.DataFrame, strategy: str = 'BTST'):
 
     if shutdown_manager.is_shutdown(): return
 
-    pdf_file = f"scan_report_{datetime.now().strftime('%Y_%m_%d_%H%M')}.pdf"
-    export_to_pdf(top_df, news_summary, pdf_file)
+    pdf_file = f"scan_report_{strategy.upper()}_{datetime.now().strftime('%Y_%m_%d_%H%M')}.pdf"
+    export_to_pdf(top_df, news_summary, pdf_file, strategy)
     print(f"📄 Background {strategy.upper()} report saved to {pdf_file}")
 
 def start_background_report(df_signals: pd.DataFrame, strategy: str = 'BTST'):

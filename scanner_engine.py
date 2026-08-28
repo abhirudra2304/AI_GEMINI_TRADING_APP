@@ -1136,6 +1136,19 @@ class EMFBScanner(BaseScanner):
                 'VWAP_Score': row.get('vwap_rank', 0),
                 'Last_Hour_Vol': row.get('last_hour_vol_rank', 0),
                 'Breakout_Score': row.get('breakout_rank', 0),
+                # Raw RSI(14) - already computed in compute_daily_metrics and
+                # percentile-ranked above ('rsi_rank'), but was never surfaced in
+                # output or weighted into EMFB_Score: every WEIGHT_PROFILES entry in
+                # config.py omits 'rsi_rank', so it was dead computation. Surfaced
+                # here as an informational column only - deliberately NOT added to
+                # any weight profile, since that would change EMFB_Score/ranking for
+                # every existing consumer (stockscan, tier_performance win-rate
+                # history, etc.) without the same backtested validation the current
+                # weights have. Manual RSI checks throughout 2026-08 sessions kept
+                # catching overbought entries (e.g. MOTILALOFS, BEL, AVALON) that
+                # Extension_Flag's EMA20-distance measure missed - this closes that
+                # gap for future sessions without touching scoring.
+                'RSI_14': round(row.get('rsi', 50), 1),
                 # Add lowercase aliases for backtester compatibility
                 'strategy': 'EMFB',
                 'timestamp': datetime.now(config.MARKET_TZ),

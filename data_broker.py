@@ -214,13 +214,19 @@ class DataBroker:
         self.refresh_cooldown_seconds = 300 # 5 minutes cooldown
         self.jwt_token = None
         self.feed_token = None
-        self.min_api_interval_seconds = 1.1 # Increased safety margin to avoid "exceeding access rate"
+        self.min_api_interval_seconds = 1.8 # Bumped from 1.1: that spacing still triggered AB1021 rate-limit
+        # rejections under load (2026-08-12 prewarm/momentum runs), forcing expensive exponential-backoff
+        # retries (up to ~15s/call across 4 attempts) that were the actual cause of 20+ minute scan times -
+        # paying more up front here is cheaper than paying retries downstream.
         self.api_request_lock = threading.Lock()
         self.refresh_token = None
         # --- NEW WebSocket and Aggregator state ---
         self.aggregator = TickAggregator(intervals=AGGREGATOR_INTERVALS)
         self.ws = None
         self.ws_thread = None
+        # SmartWebSocketV2 exposes no is_connected() method, so track state ourselves
+        # via the on_open/on_close callbacks it does provide.
+        self._ws_connected = False
         self.subscribed_tokens = set()
         self.subscription_lock = threading.Lock()
         self._generate_new_session(caller="Initialization")
@@ -290,6 +296,7 @@ class DataBroker:
     # --- WebSocket Integration Methods ---
     def _on_open(self, wsapp):
         logger.info("✅ WebSocket connection opened.")
+        self._ws_connected = True
         if self.subscribed_tokens:
             tokens_to_resubscribe = list(self.subscribed_tokens)
             logger.info(f"Resubscribing to {len(tokens_to_resubscribe)} tokens...")
@@ -313,9 +320,10 @@ class DataBroker:
 
     def _on_close(self, wsapp, close_status_code, close_msg):
         logger.warning(f"WebSocket connection closed: {close_status_code} - {close_msg}")
+        self._ws_connected = False
 
     def connect_websocket(self):
-        if self.ws and self.ws.is_connected():
+        if self.ws and self._ws_connected:
             logger.info("WebSocket is already connected.")
             return
         self._ensure_session()
@@ -333,7 +341,7 @@ class DataBroker:
         logger.info("WebSocket connection thread started.")
 
     def close_websocket(self):
-        if self.ws and self.ws.is_connected():
+        if self.ws and self._ws_connected:
             print("Closing WebSocket...")
             logger.info("Closing WebSocket connection...")
             self.ws.close()
@@ -342,7 +350,7 @@ class DataBroker:
             logger.info("WebSocket connection closed.")
 
     def _send_subscription(self, token_list: list):
-        if not self.ws or not self.ws.is_connected():
+        if not self.ws or not self._ws_connected:
             logger.warning("WebSocket not connected. Cannot send subscription.")
             return
         token_json = [{"exchangeType": 1, "tokens": token_list}] # 1 for NSE
@@ -568,7 +576,17 @@ class DataBroker:
         # Sanitize symbol for cache filename consistency.
         normalized_symbol = symbol.replace('-EQ', '').replace('-BE', '')
         file_path = os.path.join(self.cache_dir, f"{normalized_symbol}_{interval}_{days_back}.parquet")
-        to_date = end_date or datetime.now()
+        # Must be tz-aware (config.MARKET_TZ) to match cached Timestamp columns
+        # (always tz-aware, e.g. "...+05:30") - a naive datetime.now() here made
+        # the ONE_HOUR incremental-update comparison at `start_date_for_api >=
+        # to_date` below (start_date_for_api is derived from the tz-aware cached
+        # last_date) raise "can't compare offset-naive and offset-aware
+        # datetimes", caught by that block's broad except and silently
+        # downgraded to an expensive full refresh - for every symbol, every
+        # scan, all week (2026-08-12 through at least 2026-08-21). _flag_if_stale
+        # in this same file already uses datetime.now(config.MARKET_TZ) for the
+        # same reason; this just brings this call in line with that pattern.
+        to_date = end_date or datetime.now(config.MARKET_TZ)
 
         if force_refresh and os.path.exists(file_path):
             logger.info(f"Force refresh requested for {symbol}. Deleting existing cache file.")

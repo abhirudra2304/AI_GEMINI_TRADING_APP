@@ -131,10 +131,17 @@ class APIProfiler:
             duration = time.monotonic() - self.start_time
             print("\n" + "="*80 + f"\n📊 PROFILER REPORT (duration: {duration:.2f}s)\n" + "="*80)
 
-        total_requests = self.stats.get('requests', {}).get('total', 0)
+        requests = self.stats.get('requests', {})
+        total_requests = requests.get('total', 0)
         if total_requests > 0:
             print(f"Total API Requests: {total_requests}")
-        # Add more detailed printing logic as needed
+            print(f"  Success:   {requests.get('success', 0)}")
+            print(f"  Retries:   {requests.get('retries', 0)}")
+            print(f"  Cooldowns: {requests.get('cooldowns', 0)}")
+        if self.errors:
+            print("Errors by code:")
+            for code, count in sorted(self.errors.items(), key=lambda kv: -kv[1]):
+                print(f"  {code}: {count}")
         print("="*80)
 
 # Singleton instance used across the application

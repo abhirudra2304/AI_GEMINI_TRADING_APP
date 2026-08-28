@@ -182,6 +182,26 @@ def execute_macro_discovery(broker: DataBroker, scanner: HybridScanner, strategy
     # Provider returns [{'symbol': ..., 'sector': ...}]; the broker and scan loop work on symbol strings.
     current_universe = [record['symbol'] for record in universe_records]
     sector_by_symbol = {record['symbol']: record.get('sector', 'OTHER') for record in universe_records}
+
+    # Strategy-Specific Gating: Restrict BTST / GAP / INTRADAY to BTST_ELIGIBLE names only
+    # (Leaving multi-day SWING scanning the full universe to preserve compounder alpha).
+    if strategy.upper() in ['BTST', 'GAP', 'INTRADAY'] and not point_in_time:
+        fitness_file = 'universe_fitness.csv'
+        if os.path.exists(fitness_file):
+            try:
+                fit_df = pd.read_csv(fitness_file)
+                btst_mask = fit_df['Primary_Tag'].isin(['BTST_ELIGIBLE']) | fit_df['All_Tags'].astype(str).str.contains('BTST_ELIGIBLE', na=False)
+                btst_eligible_symbols = set(fit_df[btst_mask]['Symbol'])
+                filtered_universe = [s for s in current_universe if s in btst_eligible_symbols]
+                if filtered_universe:
+                    logger.info(
+                        f"🎯 BTST Fitness Gate: filtered from {len(current_universe)} to {len(filtered_universe)} "
+                        f"BTST_ELIGIBLE symbols (dropped {len(current_universe) - len(filtered_universe)} low-velocity/illiquid names)."
+                    )
+                    current_universe = filtered_universe
+            except Exception as e:
+                logger.warning(f"BTST fitness gate skipped due to error: {e}")
+
     available_universe = broker.filter_available_symbols(current_universe)
     if not available_universe: return [], pd.DataFrame(), None
         
@@ -282,7 +302,6 @@ def execute_macro_discovery(broker: DataBroker, scanner: HybridScanner, strategy
                 (min(sector_rs, 100) * 0.4) +
                 (min(rsi, 80) * 0.2)
             ) / distance_divisor
-            rank_score = min(rank_score, 100)
 
             safe_ema20_delta = metrics.get('EMA20', cp)
 

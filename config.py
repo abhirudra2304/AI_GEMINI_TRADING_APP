@@ -20,7 +20,22 @@ MARKET_TZ = ZoneInfo("Asia/Kolkata")
 # --- Data Caching ---
 class CacheConfig:
     # Time-to-live for the discovery cache in minutes.
-    CACHE_REFRESH_MINUTES = 60
+    # 2026-08-21: was 60 - discovered this was silently breaking BTST/SWING
+    # every single day since 2026-08-12. TradingApp_Prewarm generates this
+    # cache at 13:15, but TradingApp_EOD (which consumes it) doesn't run
+    # until 15:15 - a 120-minute gap. A 60-min TTL guaranteed the cache was
+    # always expired by the time EOD needed it (observed age at EOD time:
+    # consistently 1h35m-1h48m across 2026-08-17/18/19's logs), so EOD
+    # silently skipped BTST/SWING entirely, every day - not a market
+    # condition, a self-inflicted regression from moving Prewarm from 14:25
+    # to 13:15 on 2026-08-12 to fix an unrelated momentum-scan-timing issue
+    # (the old 14:25->15:15 gap was 50min, inside the old 60-min TTL; the
+    # new 13:15->15:15 gap is 120min, outside it). 150 minutes safely covers
+    # the 120-min Prewarm->EOD gap with a 30-min buffer for run-time
+    # variance, without being so long it bleeds into being stale for its
+    # actual purpose (Phase 1's coarse candidate list - Phase 2 does its own
+    # live re-confirmation at scan time regardless of this cache's age).
+    CACHE_REFRESH_MINUTES = 150
     # Base directory for historical candle data.
     HISTORICAL_DATA_DIR = 'historical_data'
 
@@ -37,15 +52,15 @@ class Universe:
     "IDEAFORGE", "INFY", "INOXWIND", "IRCON", "IRFC", "ITC", "JSWENERGY", "JUBLFOOD",
     "JWL", "JYOTICNC", "KAYNES", "KEI", "KIMS", "KNRCON", "KPIGREEN", "KPIL",
     "KPITTECH", "KSB", "LT", "LUPIN", "M&M", "MANKIND", "MARUTI", "MAXHEALTH",
-    "MAZDOCK", "MCDOWELL-N", "MIDHANI", "MTARTECH", "NAVINFLUOR", "NBCC", "NCC", "NESTLEIND",
+    "MAZDOCK", "UNITDSPR", "MIDHANI", "MTARTECH", "NAVINFLUOR", "NBCC", "NCC", "NESTLEIND",
     "NETWEB", "NH", "NHPC", "NTPC", "OFSS", "PARAS", "PERSISTENT", "PGEL",
-    "PIDILITIND", "PIIND", "PNCINFRA", "POLYCAB", "POWERGRID", "POWERINDIA", "PREMEXPLN", "PREMIERENE",
-    "RAILTEL", "RELIANCE", "RVNL", "SCHNEIDER", "SIEMENS", "SJVN", "SKFINDIA", "SOLARINDS",
+    "PIDILITIND", "PIIND", "PNCINFRA", "POLYCAB", "POWERINDIA", "PREMEXPLN", "PREMIERENE",
+    "RAILTEL", "RVNL", "SCHNEIDER", "SIEMENS", "SJVN", "SKFINDIA", "SOLARINDS",
     "SRF", "STLTECH", "SUNPHARMA", "SUZLON", "SYRMA", "TAALTECH", "TANLA", "TATACHEM",
     "TATACOMM", "TATACONSUM", "TATAELXSI", "TECHM", "TEJASNET", "TEXRAIL", "THERMAX", "TIMKEN",
     "TITAGARH", "TITAN", "TORNTPHARM", "TRENT", "ULTRACEMCO", "VBL", "VINATIORGA", "WAAREEENER",
     "ZENTEC", "ZYDUSLIFE", "HAL", "BEL", "UNIMECH", "ETERNAL", "KOTAKBANK", "SBIN",
-    "PNBHOUSING", "TATAPOWER", "SGEL", "EXIDEIND", "CUMMINSIND", "SOBHA", "ANANTRAJ", "DRREDDY",
+    "PNBHOUSING", "EXIDEIND", "CUMMINSIND", "SOBHA", "ANANTRAJ", "DRREDDY",
     "VIJAYA", "ROUTE", "BHARTIARTL", "TCS", "BSE", "MCX", "CDSL", "CAMS",
     "IREDA", "CONCOR", "INDHOTEL", "BHEL", "SONACOMS", "PNB", "BANKBARODA", "CANBK",
     "UNIONBANK", "INDIANB", "TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "JINDALSTEL", "NATIONALUM",
@@ -54,7 +69,8 @@ class Universe:
     "JKCEMENT", "HDFCLIFE", "SBILIFE", "ICICIPRULI", "ICICIGI", "ANGELONE", "BLS", "DCBBANK",
     "GODFRYPHLP", "HINDCOPPER", "LTTS", "MOSCHIP", "NUVAMA", "PSPPROJECT", "PTCIL", "PWL",
     "SARDAEN", "RECLTD", "PFC", "OLECTRA", "JBMA", "TARIL", "VOLTAMP", "KALYANKJIL",
-    "COALINDIA",
+    "COALINDIA", "AZAD", "E2E", "AVALON", "RATEGAIN", "POLICYBZR", "360ONE", "MOTILALOFS",
+    "LODHA", "PAYTM", "MOTHERSON",
 ]
 
     # Institutional Sector Mappings
@@ -87,12 +103,13 @@ class Universe:
         'MANKIND': 'PHARMA', 'TORNTPHARM': 'PHARMA', 'AUROPHARMA': 'PHARMA', 'ZYDUSLIFE': 'PHARMA', 'ALKEM': 'PHARMA',
         'MAXHEALTH': 'HEALTHCARE', 'APOLLOHOSP': 'HEALTHCARE', 'NH': 'HEALTHCARE', 'FORTIS': 'HEALTHCARE', 'KIMS': 'HEALTHCARE',
         'VBL': 'CONSUMER', 'HINDUNILVR': 'CONSUMER', 'ITC': 'CONSUMER', 'NESTLEIND': 'CONSUMER',
-        'TATACONSUM': 'CONSUMER', 'JUBLFOOD': 'CONSUMER', 'MCDOWELL-N': 'CONSUMER',
+        'TATACONSUM': 'CONSUMER', 'JUBLFOOD': 'CONSUMER', 'UNITDSPR': 'CONSUMER',
         'DEEPAKNTR': 'CHEMICALS', 'PIIND': 'CHEMICALS', 'NAVINFLUOR': 'CHEMICALS', 'AARTIIND': 'CHEMICALS',
         'FINEORG': 'CHEMICALS', 'VINATIORGA': 'CHEMICALS', 'FLUOROCHEM': 'CHEMICALS', 'CLEAN': 'CHEMICALS',
         'TATACHEM': 'CHEMICALS',
-        'ETERNAL': 'RETAIL', 'SBIN': 'FINANCE', 'PNBHOUSING': 'FINANCE', 'SGEL': 'POWER',
+        'ETERNAL': 'RETAIL', 'SBIN': 'FINANCE', 'PNBHOUSING': 'FINANCE',
         'EXIDEIND': 'AUTO_ANC', 'SOBHA': 'REALTY', 'ANANTRAJ': 'REALTY', 'VIJAYA': 'HEALTHCARE',
+        'LODHA': 'REALTY', 'PAYTM': 'FINANCE', 'MOTHERSON': 'AUTO_ANC',
         'BSE': 'FINANCE', 'MCX': 'FINANCE', 'CDSL': 'FINANCE', 'CAMS': 'FINANCE', 'IREDA': 'FINANCE',
         'CONCOR': 'INFRA', 'INDHOTEL': 'CONSUMER', 'BHEL': 'CAPITAL_GOODS', 'SONACOMS': 'AUTO_ANC',
         # --- PSU BANKS (added) ---
@@ -164,7 +181,7 @@ class Universe:
         'INFY': 0.82, 'GODFRYPHLP': 0.72, 'INDHOTEL': 0.88, 'PSPPROJECT': 0.85,
         'CAMS': 1.15, 'LTTS': 1.20, 'MOSCHIP': 1.50,
         'IDEAFORGE': 1.45, 'CONCOR': 0.90, 'DCBBANK': 0.78, 'STLTECH': 1.40,
-        'ETERNAL': 1.45, 'SBIN': 1.10, 'PNBHOUSING': 1.35, 'SGEL': 1.40,
+        'ETERNAL': 1.45, 'SBIN': 1.10, 'PNBHOUSING': 1.35,
         'EXIDEIND': 1.15, 'SOBHA': 1.50, 'ANANTRAJ': 1.42, 'VIJAYA': 1.05,
         'BHEL': 1.35, 'SONACOMS': 1.20,
         # Computed beta (cov/var of daily returns vs Nifty 50, ~1yr local cache) for the
@@ -188,7 +205,7 @@ class Universe:
         'IRCON': 1.76, 'ITC': 0.66, 'JSWENERGY': 1.06, 'JUBLFOOD': 1.1, 'JWL': 1.51,
         'JYOTICNC': 1.4, 'KEI': 1.17, 'KIMS': 0.71, 'KNRCON': 1.12, 'KOTAKBANK': 0.99,
         'KPIGREEN': 1.44, 'KPIL': 0.84, 'KPITTECH': 1.05, 'KSB': 0.57, 'LT': 1.33,
-        'LUPIN': 0.53, 'MANKIND': 0.65, 'MARUTI': 1.09, 'MAXHEALTH': 0.74, 'MCDOWELL-N': 0.77,
+        'LUPIN': 0.53, 'MANKIND': 0.65, 'MARUTI': 1.09, 'MAXHEALTH': 0.74, 'UNITDSPR': 0.77,
         'MIDHANI': 1.46, 'MTARTECH': 1.28, 'NAVINFLUOR': 0.67, 'NBCC': 1.64, 'NCC': 1.31,
         'NESTLEIND': 0.67, 'NH': 0.74, 'NHPC': 0.9, 'NTPC': 0.63, 'OFSS': 0.94,
         'PARAS': 1.17, 'PGEL': 1.83, 'PIDILITIND': 0.97, 'PIIND': 0.92, 'PNCINFRA': 1.07,
