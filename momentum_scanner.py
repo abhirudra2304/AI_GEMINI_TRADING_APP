@@ -41,6 +41,8 @@ from nse_daily_history import NSEDailyHistory
 
 logger = logging.getLogger(__name__)
 
+COVERAGE_WARN_PCT = 90.0  # below this share of the universe scored, warn loudly
+
 MOMENTUM_CONFIG_PATH = "momentum_config.yaml"
 MOMENTUM_CACHE_PATH = "discovery_cache_momentum.pkl"
 
@@ -142,6 +144,26 @@ def _generate_report(df: pd.DataFrame, top_n: int):
     print("\n" + "=" * 120)
     print("ALWAYS-ON MOMENTUM / BREAKOUT SCAN (non-gated, runs every session)")
     print(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+    # Universe coverage. Rate limiting silently drops symbols during the fetch
+    # stage, so a run can score a fraction of the universe and still print a
+    # clean-looking top-20 with no indication anything is missing. Observed
+    # 2026-09-01: 123 of 215 scored (43% invisible), and the largest 20-day
+    # mover in the whole universe (KALYANKJIL, +35%) was among the dropped -
+    # 89 of the 92 missing symbols had perfectly good cached data, so this is
+    # dropped coverage, not a data gap. Absence has to be visible or it reads
+    # as "nothing there".
+    coverage = df.attrs.get('coverage')
+    if coverage:
+        scanned, expected = coverage['scanned'], coverage['expected']
+        pct = (scanned / expected * 100) if expected else 0.0
+        line = f"Universe coverage: {scanned}/{expected} symbols ({pct:.0f}%)"
+        if pct < COVERAGE_WARN_PCT:
+            print(f"⚠️  {line} - {expected - scanned} NOT SCORED this run.")
+            print("⚠️  Names absent below are NOT necessarily weak - they may never have been")
+            print("⚠️  scored. Re-run, or cross-check with `python main.py grind` (reads cache).")
+        else:
+            print(line)
     print("=" * 120)
 
     display_cols = [
@@ -332,6 +354,18 @@ def run_momentum_scan(broker: Optional[DataBroker] = None, force_refresh: bool =
         logger.info("No stocks passed initial metric calculation.")
         return pd.DataFrame()
 
+    # Coverage is measured against the universe we set out to scan, not against
+    # what survived - the whole point is to make silent attrition visible.
+    expected_universe = len(symbols_only)
+    scored_count = len(raw_metrics)
+    if expected_universe and (scored_count / expected_universe * 100) < COVERAGE_WARN_PCT:
+        logger.warning(
+            f"Universe coverage {scored_count}/{expected_universe} "
+            f"({scored_count / expected_universe * 100:.0f}%) - "
+            f"{expected_universe - scored_count} symbols were NOT scored this run "
+            f"(usually API rate limiting during the fetch stage, not missing data)."
+        )
+
     logger.info("Momentum Stage 2: Ranking universe and calculating final scores...")
     metrics_df = pd.DataFrame(raw_metrics).replace([np.inf, -np.inf], np.nan).dropna(subset=['close'])
     final_df = scanner.rank_and_score_emfb(metrics_df, weight_profile)
@@ -355,6 +389,11 @@ def run_momentum_scan(broker: Optional[DataBroker] = None, force_refresh: bool =
         final_df['Institutional_Score'] = float('nan')
 
     top_n = cfg.get('report_top_n', 20)
+    # Set immediately before the report rather than at creation: several
+    # transforms above return new frames, and pandas .attrs does not survive
+    # every one of them.
+    final_df.attrs['coverage'] = {'scanned': scored_count, 'expected': expected_universe}
+
     _generate_report(final_df, top_n)
 
     total_duration = time_sleep.time() - start_time
