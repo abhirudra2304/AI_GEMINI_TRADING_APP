@@ -354,6 +354,45 @@ def run_momentum_scan(broker: Optional[DataBroker] = None, force_refresh: bool =
         logger.info("No stocks passed initial metric calculation.")
         return pd.DataFrame()
 
+    # Stage 1.5: one bounded retry pass for symbols that failed to produce a
+    # usable metric (usually AB1021 rate-limit rejections during Stage 1's
+    # fetch). Added 2026-09-07 after a live run silently dropped 76/215
+    # symbols to rate limiting with zero automatic recovery - see
+    # project_coverage_check_gap_20260907 / project_rs_blindness_fix_20260907
+    # memory for the incident this was built from. ONE retry only, not a
+    # loop: AB1021 is a broker-side rate limit (documented as inconsistent
+    # even at well-under-budget traffic, see project_angel_api_rate_limit
+    # memory), not guaranteed to clear on a second attempt, and looping here
+    # risks turning an already-long scan into a much longer one for
+    # uncertain gain. A short pause before retrying gives the limiter a beat
+    # rather than immediately re-hitting the same burst window.
+    succeeded_symbols = {
+        m['Symbol'] for m in raw_metrics
+        if m.get('close') is not None and not pd.isna(m.get('close'))
+    }
+    missing_stocks = [s for s in stocks_to_scan if s['symbol'] not in succeeded_symbols]
+    if missing_stocks:
+        missing_symbols = [s['symbol'] for s in missing_stocks]
+        logger.info(
+            f"Momentum Stage 1.5: {len(missing_symbols)} symbol(s) missing a usable metric "
+            f"after Stage 1 - retrying once after a short pause: "
+            f"{missing_symbols[:10]}{'...' if len(missing_symbols) > 10 else ''}"
+        )
+        time_sleep.sleep(5)
+        data_store = _fetch_data_for_universe(broker, missing_symbols, ['hourly', '15min', '5min'], data_store)
+        recovered = 0
+        with ThreadPoolExecutor(max_workers=config.AppConfig.SAFE_API_WORKERS) as executor:
+            retry_futures = {executor.submit(compute_metrics_for_stock, s): s['symbol'] for s in missing_stocks}
+            for future in as_completed(retry_futures):
+                metric_result = future.result()
+                if metric_result and metric_result.get('close') is not None and not pd.isna(metric_result.get('close')):
+                    raw_metrics.append(metric_result)
+                    recovered += 1
+        logger.info(
+            f"Momentum Stage 1.5 retry complete: {recovered}/{len(missing_symbols)} recovered, "
+            f"{len(missing_symbols) - recovered} still missing after retry."
+        )
+
     logger.info("Momentum Stage 2: Ranking universe and calculating final scores...")
     metrics_df = pd.DataFrame(raw_metrics).replace([np.inf, -np.inf], np.nan).dropna(subset=['close'])
 
