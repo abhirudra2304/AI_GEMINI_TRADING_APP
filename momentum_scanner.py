@@ -395,6 +395,38 @@ def run_momentum_scan(broker: Optional[DataBroker] = None, force_refresh: bool =
         logger.warning(f"Institutional_Score column skipped due to an error: {e}", exc_info=True)
         final_df['Institutional_Score'] = float('nan')
 
+    # Informational-only Grind_Flag column - closes the "RS is a 1-day
+    # measure" blind spot (see grind_scanner.py's module docstring: a stock
+    # compounding ~1%/day for weeks never prints a big 1-day RS, so it stays
+    # invisible to this ranking no matter how strong the underlying trend
+    # is - the PTCIL/SYRMA case). grind_scanner was built 2026-08-28 to
+    # compensate but was only ever a separate command a human had to
+    # remember to run, so its signal never reached this report. Wired in
+    # 2026-09-07. Zero extra API calls (reads the same daily cache this scan
+    # already populated); NEVER used to rank/filter/reorder here either -
+    # same informational-only convention as Institutional_Score/Reliability_Flag.
+    try:
+        from grind_scanner import build_grind_table, annotate_grind
+        grind_table = build_grind_table()  # no momentum_report_path - RS_1D set from final_df below instead, since it's more current than any file on disk
+        if not grind_table.empty:
+            rs_lookup = final_df.set_index('Symbol')['RS_vs_Nifty']
+            grind_table['RS_1D'] = grind_table['Symbol'].map(rs_lookup)
+            grind_table['In_Momentum_Scan'] = grind_table['Symbol'].isin(final_df['Symbol'])
+            grind_table = annotate_grind(grind_table)
+            final_df = final_df.merge(
+                grind_table[['Symbol', 'Grind_Flag', 'Ret20d_Pct']].rename(
+                    columns={'Ret20d_Pct': 'Grind_Ret20d_Pct'}
+                ),
+                on='Symbol', how='left',
+            )
+        else:
+            final_df['Grind_Flag'] = ''
+            final_df['Grind_Ret20d_Pct'] = float('nan')
+    except Exception as e:
+        logger.warning(f"Grind_Flag column skipped due to an error: {e}", exc_info=True)
+        final_df['Grind_Flag'] = ''
+        final_df['Grind_Ret20d_Pct'] = float('nan')
+
     top_n = cfg.get('report_top_n', 20)
     # Set immediately before the report rather than at creation: several
     # transforms above return new frames, and pandas .attrs does not survive

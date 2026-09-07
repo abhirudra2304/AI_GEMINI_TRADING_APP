@@ -331,7 +331,7 @@ def _print_shortlist(df: pd.DataFrame, score_col: Optional[str], t0: float) -> N
     print("-" * 100)
     cols = [c for c in [
         'Symbol', score_col, 'Confidence', 'Tier_Win_Rate_Pct', 'Actionability',
-        'Extension_Flag', 'Catalyst', 'Earnings_Risk', 'Trigger', 'Stop', 'Target'
+        'Extension_Flag', 'Grind_Flag', 'Catalyst', 'Earnings_Risk', 'Trigger', 'Stop', 'Target'
     ] if c and c in df.columns]
     if df.empty:
         print("  (shortlist empty after filters)")
