@@ -354,10 +354,19 @@ def run_momentum_scan(broker: Optional[DataBroker] = None, force_refresh: bool =
         logger.info("No stocks passed initial metric calculation.")
         return pd.DataFrame()
 
+    logger.info("Momentum Stage 2: Ranking universe and calculating final scores...")
+    metrics_df = pd.DataFrame(raw_metrics).replace([np.inf, -np.inf], np.nan).dropna(subset=['close'])
+
     # Coverage is measured against the universe we set out to scan, not against
     # what survived - the whole point is to make silent attrition visible.
+    # Checked AFTER the dropna above (not against len(raw_metrics) before it):
+    # a symbol can produce a Stage 1 row that's just NaN placeholders from a
+    # failed fetch, inflating the pre-dropna count while the row never
+    # actually makes it into the report. Found 2026-09-07: a run logged
+    # "215/215 scored" here while the saved report had only 139 rows, because
+    # this check was reading len(raw_metrics) instead of the post-dropna count.
     expected_universe = len(symbols_only)
-    scored_count = len(raw_metrics)
+    scored_count = len(metrics_df)
     if expected_universe and (scored_count / expected_universe * 100) < COVERAGE_WARN_PCT:
         logger.warning(
             f"Universe coverage {scored_count}/{expected_universe} "
@@ -366,8 +375,6 @@ def run_momentum_scan(broker: Optional[DataBroker] = None, force_refresh: bool =
             f"(usually API rate limiting during the fetch stage, not missing data)."
         )
 
-    logger.info("Momentum Stage 2: Ranking universe and calculating final scores...")
-    metrics_df = pd.DataFrame(raw_metrics).replace([np.inf, -np.inf], np.nan).dropna(subset=['close'])
     final_df = scanner.rank_and_score_emfb(metrics_df, weight_profile)
     final_df = apply_nse_earnings_fallback(final_df)
 
