@@ -70,6 +70,11 @@ HIDDEN_RS_MAX = 40.0       # 1-day RS under this = invisible to the daily rankin
 QUALITY_UP_DAYS = 13       # of TREND_WINDOW; a real grind closes up most days
 STALL_SHORT_RET = 0.0      # 20d strong but 10d negative => the move is over
 
+# Move_Stage thresholds - see annotate_move_stage() below.
+EARLY_RS_MIN = 60.0        # today's move must be genuinely strong to call it "early"
+EXTENDED_RET20_MIN = 20.0  # cumulative 20d gain past this = already had its move
+MAX_STALE_DAYS = 4         # Last_Bar older than this (covers a long weekend) = don't classify
+
 
 def _daily_cache_path(symbol: str) -> Optional[str]:
     for suffix in _DAILY_CACHE_SUFFIXES:
@@ -236,6 +241,72 @@ def annotate_grind(df: pd.DataFrame) -> pd.DataFrame:
     flag[hidden] = "HIDDEN"
     flag[stalling] = "STALLING"  # takes precedence: a stalled move is not an opportunity
     out["Grind_Flag"] = flag
+    return out
+
+
+def annotate_move_stage(df: pd.DataFrame) -> pd.DataFrame:
+    """Adds Move_Stage - WHERE a name sits in its move, not just whether it's
+    moving. Labels only, same convention as Grind_Flag: never drops/reorders
+    rows, and a blank label is a valid "doesn't fit a clean bucket" outcome,
+    not a failure.
+
+    Built 2026-09-08 after a session where every High-confidence name in that
+    day's shortlist turned out to already be extended (SYRMA +9.14% above its
+    own EMA20 the day after an 11.5% breakout) except two - APOLLO and
+    COCHINSHIP - that stood out only because a human manually cross-referenced
+    today's RS against grind's Ret20d_Pct. That cross-reference is exactly
+    what this function automates, using the same cache-only inputs
+    annotate_grind() already computes (RS_1D from the momentum join,
+    Ret20d_Pct/Ret10d_Pct from the daily cache) - zero extra API calls.
+
+    EARLY    - today's RS is genuinely strong (>=60) but the 20-day return is
+               still small (<MIN_RETURN_PCT) - a fresh move off a flat base,
+               not a continuation. The APOLLO case.
+    MIDWAY   - same population as Grind_Flag's HIDDEN (real 20d move, RS still
+               under the hidden threshold, not already stalling) - the move
+               is underway but the daily ranking can't see it yet.
+    EXTENDED - 20-day return has already cleared EXTENDED_RET20_MIN (20%) -
+               a large cumulative move has already happened, regardless of
+               today's RS. The SYRMA/SOLARINDS case.
+    STALLING - reuses Grind_Flag's STALLING condition (strong 20d, rolled-
+               over 10d) - the move is already over, not a stage to enter on.
+    (blank)  - doesn't fit any bucket cleanly (e.g. a middling ~10-20% 20d
+               return with already-elevated RS), OR the underlying daily
+               cache is stale (see MAX_STALE_DAYS) - deliberately left
+               unclassified rather than forced into a bucket that doesn't fit
+               or trusted on data that's out of date.
+
+    Staleness guard added same day this was built: a symbol whose 400-day
+    cache file gets wiped (e.g. a failed force-refresh mid-session) silently
+    falls back to an older cache file in build_grind_table's suffix list,
+    which can be WEEKS old - caught live 2026-09-08 when SYRMA's Last_Bar was
+    2026-08-06 (a month stale) after its cache got wiped during an unrelated
+    audit, producing a real but wrong Ret20d_Pct of -1.6% (SYRMA had just had
+    an 11.5% breakout days earlier) and a misleading EARLY label. Any row
+    whose Last_Bar isn't within MAX_STALE_DAYS of today is left unclassified
+    regardless of what its numbers say.
+    """
+    if df.empty:
+        return df
+    out = df.copy()
+
+    today = pd.Timestamp.now().normalize()
+    last_bar = pd.to_datetime(out["Last_Bar"], errors="coerce")
+    fresh = last_bar.notna() & ((today - last_bar).dt.days <= MAX_STALE_DAYS)
+
+    strong = out["Ret20d_Pct"] >= MIN_RETURN_PCT
+    rs_known = out["RS_1D"].notna()
+    early = fresh & rs_known & (out["RS_1D"] >= EARLY_RS_MIN) & (out["Ret20d_Pct"] < MIN_RETURN_PCT)
+    midway = fresh & strong & rs_known & (out["RS_1D"] < HIDDEN_RS_MAX) & (out["Ret10d_Pct"] > STALL_SHORT_RET)
+    extended = fresh & (out["Ret20d_Pct"] >= EXTENDED_RET20_MIN)
+    stalling = fresh & strong & (out["Ret10d_Pct"] <= STALL_SHORT_RET)
+
+    stage = pd.Series("", index=out.index)
+    stage[early] = "EARLY"
+    stage[midway] = "MIDWAY"
+    stage[extended] = "EXTENDED"
+    stage[stalling] = "STALLING"  # takes precedence, same reasoning as Grind_Flag
+    out["Move_Stage"] = stage
     return out
 
 

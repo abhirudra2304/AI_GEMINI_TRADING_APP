@@ -444,16 +444,24 @@ def run_momentum_scan(broker: Optional[DataBroker] = None, force_refresh: bool =
     # 2026-09-07. Zero extra API calls (reads the same daily cache this scan
     # already populated); NEVER used to rank/filter/reorder here either -
     # same informational-only convention as Institutional_Score/Reliability_Flag.
+    # Move_Stage sits alongside Grind_Flag for the same reason and same cost
+    # (zero extra API calls, same grind_table build) - see
+    # grind_scanner.annotate_move_stage()'s docstring for why this exists:
+    # Grind_Flag says WHETHER a name is moving, Move_Stage says WHERE in that
+    # move it is (EARLY/MIDWAY/EXTENDED/STALLING) - built 2026-09-08 after a
+    # session where every High-confidence name but two turned out to already
+    # be extended, and telling the two apart required a human manually
+    # cross-referencing today's RS against Ret20d_Pct by hand.
     try:
-        from grind_scanner import build_grind_table, annotate_grind
+        from grind_scanner import build_grind_table, annotate_grind, annotate_move_stage
         grind_table = build_grind_table()  # no momentum_report_path - RS_1D set from final_df below instead, since it's more current than any file on disk
         if not grind_table.empty:
             rs_lookup = final_df.set_index('Symbol')['RS_vs_Nifty']
             grind_table['RS_1D'] = grind_table['Symbol'].map(rs_lookup)
             grind_table['In_Momentum_Scan'] = grind_table['Symbol'].isin(final_df['Symbol'])
-            grind_table = annotate_grind(grind_table)
+            grind_table = annotate_move_stage(annotate_grind(grind_table))
             final_df = final_df.merge(
-                grind_table[['Symbol', 'Grind_Flag', 'Ret20d_Pct']].rename(
+                grind_table[['Symbol', 'Grind_Flag', 'Ret20d_Pct', 'Move_Stage']].rename(
                     columns={'Ret20d_Pct': 'Grind_Ret20d_Pct'}
                 ),
                 on='Symbol', how='left',
@@ -461,10 +469,12 @@ def run_momentum_scan(broker: Optional[DataBroker] = None, force_refresh: bool =
         else:
             final_df['Grind_Flag'] = ''
             final_df['Grind_Ret20d_Pct'] = float('nan')
+            final_df['Move_Stage'] = ''
     except Exception as e:
-        logger.warning(f"Grind_Flag column skipped due to an error: {e}", exc_info=True)
+        logger.warning(f"Grind_Flag/Move_Stage column skipped due to an error: {e}", exc_info=True)
         final_df['Grind_Flag'] = ''
         final_df['Grind_Ret20d_Pct'] = float('nan')
+        final_df['Move_Stage'] = ''
 
     top_n = cfg.get('report_top_n', 20)
     # Set immediately before the report rather than at creation: several
