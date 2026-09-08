@@ -37,6 +37,7 @@ already populate, so a full 215-symbol pass takes seconds rather than the
 ~30 minutes an API-based version needed (measured: an API version timed out at
 10 minutes; this reads 215 symbols in under 15 seconds).
 """
+import glob
 import logging
 import os
 from datetime import datetime
@@ -52,14 +53,18 @@ logger = logging.getLogger(__name__)
 GRIND_OUTPUT_PATH = "grind_candidates.csv"
 HISTORICAL_DIR = "historical_data"
 
-# Cache files are written per (symbol, interval, days_back); prefer the widest
-# daily window available so the regression has room.
+# Legacy fixed-priority list, kept only as a last-resort fallback - see
+# _daily_cache_path below for why picking by suffix alone was wrong.
 _DAILY_CACHE_SUFFIXES = [
     "_ONE_DAY_400.parquet",
     "_ONE_DAY_460.parquet",
     "_ONE_DAY_200.parquet",
     "_ONE_DAY.parquet",
 ]
+
+# Most recently written candidates to actually open when resolving a symbol's
+# cache. Bounded so resolution stays ~1-2 reads per symbol in the common case.
+_MAX_CACHE_CANDIDATES = 4
 
 TREND_WINDOW = 20          # trading days the grind is measured over
 SHORT_WINDOW = 10          # used to detect a grind that has already stalled
@@ -77,6 +82,53 @@ MAX_STALE_DAYS = 4         # Last_Bar older than this (covers a long weekend) = 
 
 
 def _daily_cache_path(symbol: str) -> Optional[str]:
+    """The FRESHEST usable daily cache for `symbol`, not the first match in a
+    fixed suffix list.
+
+    This used to walk _DAILY_CACHE_SUFFIXES in order and return the first file
+    that existed, on the assumption that the widest window was also the most
+    current. That assumption is false: DataBroker writes a separate file per
+    days_back value, so a symbol accumulates _400/_460/_40/_30/_10/... files
+    and whichever one a given fetch happened to target is the only one that got
+    refreshed. Measured 2026-09-08: SYRMA's _460 file held a last bar of
+    2026-08-06 while its _30 file held 2026-09-08 - and grind, Move_Stage and
+    decision_brief were all silently reading the month-old one, which is what
+    made SYRMA's Ret20d_Pct come out at -1.6% days after an 11.5% breakout.
+
+    Selection is by (latest bar, then row count), among the most recently
+    modified candidates, requiring enough rows for the trend window. Stage2
+    already returns None on its own when history is too short for the 150-day
+    MA, so preferring recency here cannot silently corrupt it - it just means
+    Stage2 is unavailable for a symbol whose only fresh cache is small.
+    """
+    candidates = glob.glob(os.path.join(HISTORICAL_DIR, f"{symbol}_ONE_DAY*.parquet"))
+    if not candidates:
+        return None
+
+    candidates.sort(key=os.path.getmtime, reverse=True)
+    best_key, best_path = None, None
+    for path in candidates[:_MAX_CACHE_CANDIDATES]:
+        try:
+            ts = pd.read_parquet(path, columns=["Timestamp"])
+        except Exception:
+            continue
+        if len(ts) < TREND_WINDOW + 2:
+            continue
+        try:
+            last_bar = pd.Timestamp(ts["Timestamp"].max())
+            if last_bar.tzinfo is not None:
+                last_bar = last_bar.tz_localize(None)
+        except Exception:
+            continue
+        key = (last_bar, len(ts))
+        if best_key is None or key > best_key:
+            best_key, best_path = key, path
+
+    if best_path:
+        return best_path
+
+    # Nothing had enough history - fall back to the legacy fixed order so a
+    # thin-but-present cache still resolves rather than the symbol vanishing.
     for suffix in _DAILY_CACHE_SUFFIXES:
         path = os.path.join(HISTORICAL_DIR, f"{symbol}{suffix}")
         if os.path.exists(path):

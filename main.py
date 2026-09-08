@@ -1001,7 +1001,8 @@ def print_help():
         "  python main.py reliability                                   # per-symbol win rate/avg return from resolved trade history; flags real repeated winners/losers"
     )
     print(
-        "  python main.py grind                                         # multi-week steady movers the 1-day RS ranking misses (reads cache, no API calls)"
+        "  python main.py grind                                         # multi-week steady movers the 1-day RS ranking misses (reads cache, no API calls)",
+        "  python main.py brief                                         # ONE COMMAND: BTST / SWING / GRIND candidates, stage- and reliability-filtered (reads cache, no API calls)"
     )
     print("  python main.py eod [--force-refresh]                         # run BTST+SWING+EMFB, print consolidated Top 5 report")
     print("  python main.py invalidate [BTST|SWING|GAP|INTRADAY]          # delete discovery cache")
@@ -1219,6 +1220,9 @@ if __name__ == "__main__":
         elif mode == "grind":
             from grind_scanner import build_grind_report, print_grind_report, find_latest_momentum_report
             print_grind_report(build_grind_report(find_latest_momentum_report()))
+        elif mode in ("brief", "decision-brief"):
+            from decision_brief import run_decision_brief
+            run_decision_brief()
         elif mode in ("stockscan", "stock-scan"):
             from stock_scan import run_stock_scan
             rtype = positionals[1].strip().lower() if len(positionals) > 1 else "momentum"
