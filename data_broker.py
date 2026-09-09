@@ -600,11 +600,17 @@ class DataBroker:
             # one API call for just the missing candles) is worthwhile instead
             # of thrashing on every call within a scan; short enough that the
             # current trading day's latest hourly candle doesn't go stale for
-            # an entire EOD run. FIFTEEN_MINUTE/FIVE_MINUTE keep the tighter 50s
-            # TTL below - LiveScanner's 60s loop genuinely needs that freshness,
-            # and (unlike ONE_DAY/ONE_HOUR) there's no incremental path for them.
+            # an entire EOD run.
             cache_ttl = timedelta(minutes=10)
         else:
+            # FIFTEEN_MINUTE/FIVE_MINUTE keep this tight 50s TTL - LiveScanner's
+            # 60s loop genuinely needs that freshness. They now share the
+            # incremental-update path below too (see 2026-09-01: EMFB's 15min
+            # gate at scanner_engine.py's compute_emfb_metrics was silently
+            # dropping symbols whenever this full-refresh-only fetch hit a
+            # rate-limited moment, with no stale-cache fallback to catch it),
+            # so the tight TTL no longer means "full 80-day refetch every call" -
+            # it just means "always attempt an incremental top-up."
             cache_ttl = timedelta(seconds=50)
 
         # If using a historical end_date, caching becomes complex.
@@ -621,11 +627,14 @@ class DataBroker:
                 profiler.log_cache_event('load')
                 return _flag_if_stale(df, interval, symbol)
 
-            # 2. Incremental update for stale ONE_DAY/ONE_HOUR cache. Fetches only
-            # the candles newer than what's cached instead of redownloading the
-            # full days_back window - e.g. for ONE_HOUR this avoids re-pulling
-            # 100 days of hourly candles just because the 10-minute TTL lapsed.
-            if interval in ('ONE_DAY', 'ONE_HOUR') and not force_refresh:
+            # 2. Incremental update for stale ONE_DAY/ONE_HOUR/FIFTEEN_MINUTE/
+            # FIVE_MINUTE cache. Fetches only the candles newer than what's
+            # cached instead of redownloading the full days_back window - e.g.
+            # for ONE_HOUR this avoids re-pulling 100 days of hourly candles
+            # just because the 10-minute TTL lapsed, and for FIFTEEN_MINUTE/
+            # FIVE_MINUTE it avoids an 80-day full refetch on every single
+            # scan call (the 50s TTL is otherwise always expired mid-scan).
+            if interval in ('ONE_DAY', 'ONE_HOUR', 'FIFTEEN_MINUTE', 'FIVE_MINUTE') and not force_refresh:
                 try:
                     profiler.log_cache_event('incremental_update')
                     logger.info(f"Cache for {symbol} is stale. Attempting incremental update.")
@@ -646,11 +655,16 @@ class DataBroker:
                             # day stale (see 2026-08-04 RS collapse: 191/204 tickers served
                             # yesterday's cache as "current", NaN-ing their composite score).
                             is_up_to_date = last_date.date() >= to_date.date()
-                        else:  # ONE_HOUR
+                        else:  # ONE_HOUR / FIFTEEN_MINUTE / FIVE_MINUTE
                             # Just past the last cached candle's own timestamp - unlike
                             # ONE_DAY there's no "start of next period" rounding needed,
                             # the broker only ever returns candles strictly after fromdate.
-                            start_date_for_api = last_date + timedelta(hours=1)
+                            step = {
+                                'ONE_HOUR': timedelta(hours=1),
+                                'FIFTEEN_MINUTE': timedelta(minutes=15),
+                                'FIVE_MINUTE': timedelta(minutes=5),
+                            }[interval]
+                            start_date_for_api = last_date + step
                             is_up_to_date = start_date_for_api >= to_date
 
                         if is_up_to_date:

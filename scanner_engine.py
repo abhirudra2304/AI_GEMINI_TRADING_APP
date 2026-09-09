@@ -926,11 +926,24 @@ class EMFBScanner(BaseScanner):
         This function is designed to be fast and run in parallel. It does no scoring.
         """
         # --- Data Validation and Preparation ---
-        if any(data.get(tf) is None or data[tf].empty for tf in ['daily', '15min']):
+        # 15min is the intended intraday source, but its fetch has historically
+        # been the single point of failure that silently dropped an otherwise-
+        # healthy symbol from the whole report (2026-09-01: no incremental
+        # cache fallback on that timeframe, so one rate-limited API call meant
+        # `return None` here with no trace at the report level). data_broker.py
+        # now gives 15min its own incremental fallback, but 5min covers the
+        # same session at finer granularity and every metric below is computed
+        # from session-level aggregates (_prepare_intraday_frame/_latest_session
+        # are bar-width-agnostic), so it's a safe substitute if 15min is still
+        # empty. Only drop the symbol if BOTH intraday sources failed.
+        if data.get('daily') is None or data['daily'].empty:
+            return None
+        intraday_tf = '15min' if data.get('15min') is not None and not data['15min'].empty else '5min'
+        if data.get(intraday_tf) is None or data[intraday_tf].empty:
             return None
 
         df_daily = self._compute_indicators(data['daily'], 'd')
-        df_15min_full = self._prepare_intraday_frame(data['15min'])
+        df_15min_full = self._prepare_intraday_frame(data[intraday_tf])
         session_15min = self._latest_session(df_15min_full)
 
         if len(df_daily) < 50 or session_15min.empty:
