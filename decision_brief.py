@@ -214,6 +214,17 @@ def _enrich(df: pd.DataFrame, stage: pd.DataFrame, reliability: Optional[pd.Data
 
     if not stage.empty:
         keep = [c for c in ['Symbol', 'Grind_Flag', 'Move_Stage', 'Ret20d_Pct', 'Ret10d_Pct'] if c in stage.columns]
+        # The incoming frame may ALREADY carry these names - the momentum report
+        # has written its own Grind_Flag/Move_Stage since f422255. Merging without
+        # dropping them first yields Grind_Flag_x/_y, leaves the plain name absent,
+        # and the ''-fill below then manufactures an empty column - silently turning
+        # the EXTENDED/STALLING section filters into no-ops. That shipped CYIENTDLM
+        # (Ret20d 38.3%) and DCBBANK (21.6%), both EXTENDED, inside the GRIND section
+        # that exists to exclude them (caught 2026-09-09). The stage table is computed
+        # fresh here, so it is authoritative over whatever vintage the report holds.
+        collisions = [c for c in keep if c != 'Symbol' and c in out.columns]
+        if collisions:
+            out = out.drop(columns=collisions)
         out = out.merge(stage[keep], on='Symbol', how='left')
     for col in ('Grind_Flag', 'Move_Stage'):
         if col not in out.columns:
@@ -460,6 +471,9 @@ def print_decision_brief(brief: dict, top_n: int = 10) -> None:
             return
         present = [c for c in cols if c in df.columns]
         print(df[present].head(top_n).to_string(index=False))
+        if len(df) > top_n:
+            print(f"  ... {len(df) - top_n} more row(s) not shown (top_n={top_n}) - "
+                  f"the header count above is the real total.")
 
     common = ['Symbol', 'EMFB_Score', 'Engine_Score', 'Confidence', 'Move_Stage', 'Grind_Flag',
               'Reliability_Flag', 'Win_Rate', 'Trigger', 'Stop', 'Target', 'Trigger_Check']
@@ -480,6 +494,8 @@ def print_decision_brief(brief: dict, top_n: int = 10) -> None:
                    'Win_Rate', 'Trigger', 'Cached_Close', 'Cache_Last_Bar']
         present = [c for c in nv_cols if c in nv.columns]
         print(nv[present].head(top_n).to_string(index=False))
+        if len(nv) > top_n:
+            print(f"  ... {len(nv) - top_n} more row(s) not shown (top_n={top_n}).")
         print("These are NOT rejected - they are unconfirmable. Refresh with "
               "`python main.py analyze <SYMBOL> --force-refresh` before acting on any of them.")
 
