@@ -460,12 +460,17 @@ def run_momentum_scan(broker: Optional[DataBroker] = None, force_refresh: bool =
             grind_table['RS_1D'] = grind_table['Symbol'].map(rs_lookup)
             grind_table['In_Momentum_Scan'] = grind_table['Symbol'].isin(final_df['Symbol'])
             grind_table = annotate_move_stage(annotate_grind(grind_table))
-            final_df = final_df.merge(
-                grind_table[['Symbol', 'Grind_Flag', 'Ret20d_Pct', 'Move_Stage']].rename(
-                    columns={'Ret20d_Pct': 'Grind_Ret20d_Pct'}
-                ),
-                on='Symbol', how='left',
+            grind_cols = grind_table[['Symbol', 'Grind_Flag', 'Ret20d_Pct', 'Move_Stage']].rename(
+                columns={'Ret20d_Pct': 'Grind_Ret20d_Pct'}
             )
+            # Re-running the annotation over a frame that already carries these
+            # columns must overwrite them, not produce _x/_y pairs - a suffixed
+            # merge leaves the plain name missing and downstream stage filters
+            # then read a column that isn't there (see decision_brief 82738f9).
+            dupes = [c for c in grind_cols.columns if c != 'Symbol' and c in final_df.columns]
+            if dupes:
+                final_df = final_df.drop(columns=dupes)
+            final_df = final_df.merge(grind_cols, on='Symbol', how='left')
         else:
             final_df['Grind_Flag'] = ''
             final_df['Grind_Ret20d_Pct'] = float('nan')

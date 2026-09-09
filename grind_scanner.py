@@ -372,10 +372,16 @@ def annotate_reliability(df: pd.DataFrame) -> pd.DataFrame:
         table = build_reliability_table()
         if table.empty:
             raise ValueError("empty reliability table")
-        out = out.merge(
-            table[["Symbol", "Reliability_Flag", "Trades", "Win_Rate", "Avg_Return_Pct"]],
-            on="Symbol", how="left",
-        )
+        rel_cols = ["Symbol", "Reliability_Flag", "Trades", "Win_Rate", "Avg_Return_Pct"]
+        # Drop any pre-existing copies first. A plain merge would suffix them to
+        # _x/_y, leaving "Reliability_Flag" itself absent - and the fillna below
+        # would then invent an all-INSUFFICIENT_DATA column, quietly disabling
+        # every downstream UNRELIABLE filter. Same failure mechanism that hid two
+        # EXTENDED names in the 2026-09-09 GRIND section (decision_brief 82738f9).
+        collisions = [c for c in rel_cols if c != "Symbol" and c in out.columns]
+        if collisions:
+            out = out.drop(columns=collisions)
+        out = out.merge(table[rel_cols], on="Symbol", how="left")
     except Exception as e:
         logger.warning(f"Reliability annotation skipped ({e}).")
         for col in ["Reliability_Flag", "Trades", "Win_Rate", "Avg_Return_Pct"]:

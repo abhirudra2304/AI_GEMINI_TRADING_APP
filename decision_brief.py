@@ -199,6 +199,27 @@ def _build_stage_table(momentum_df: Optional[pd.DataFrame]) -> pd.DataFrame:
 # Enrichment
 # --------------------------------------------------------------------------- #
 
+def _merge_authoritative(left: pd.DataFrame, right: pd.DataFrame, on: str = 'Symbol') -> pd.DataFrame:
+    """Left-join `right` onto `left`, with `right` winning any shared column.
+
+    Plain .merge() suffixes a shared column to _x/_y, which leaves the PLAIN
+    name absent from the result. Every caller below then hits a
+    `if col not in out.columns: out[col] = <neutral>` / .fillna() guard, and
+    that guard *manufactures* a neutral column - so a filter reading it matches
+    nothing and silently switches itself off. That is exactly how the GRIND
+    section shipped two EXTENDED names on 2026-09-09 (see commit 82738f9): the
+    momentum report had grown its own Grind_Flag/Move_Stage columns, so the
+    fresh stage table's versions landed in _y and the ''-fill invented an empty
+    Move_Stage. Dropping the collision first makes the freshly-computed right
+    frame authoritative and keeps the plain name where the guards expect it.
+    """
+    out = left
+    collisions = [c for c in right.columns if c != on and c in out.columns]
+    if collisions:
+        out = out.drop(columns=collisions)
+    return out.merge(right, on=on, how='left')
+
+
 def _enrich(df: pd.DataFrame, stage: pd.DataFrame, reliability: Optional[pd.DataFrame],
             closes: pd.DataFrame) -> pd.DataFrame:
     """Attaches stage, reliability and price-sanity columns. Left joins only -
@@ -222,10 +243,7 @@ def _enrich(df: pd.DataFrame, stage: pd.DataFrame, reliability: Optional[pd.Data
         # (Ret20d 38.3%) and DCBBANK (21.6%), both EXTENDED, inside the GRIND section
         # that exists to exclude them (caught 2026-09-09). The stage table is computed
         # fresh here, so it is authoritative over whatever vintage the report holds.
-        collisions = [c for c in keep if c != 'Symbol' and c in out.columns]
-        if collisions:
-            out = out.drop(columns=collisions)
-        out = out.merge(stage[keep], on='Symbol', how='left')
+        out = _merge_authoritative(out, stage[keep])
     for col in ('Grind_Flag', 'Move_Stage'):
         if col not in out.columns:
             out[col] = ''
@@ -233,7 +251,7 @@ def _enrich(df: pd.DataFrame, stage: pd.DataFrame, reliability: Optional[pd.Data
 
     if reliability is not None:
         rel_cols = [c for c in ['Symbol', 'Reliability_Flag', 'Win_Rate', 'Avg_Return_Pct'] if c in reliability.columns]
-        out = out.merge(reliability[rel_cols], on='Symbol', how='left')
+        out = _merge_authoritative(out, reliability[rel_cols])
     if 'Reliability_Flag' not in out.columns:
         out['Reliability_Flag'] = 'INSUFFICIENT_DATA'
     out['Reliability_Flag'] = out['Reliability_Flag'].fillna('INSUFFICIENT_DATA')
@@ -256,7 +274,7 @@ def _check_triggers(df: pd.DataFrame, closes: pd.DataFrame) -> pd.DataFrame:
         out['Trigger_Check'] = 'UNVERIFIED'
         return out
 
-    out = out.merge(closes, on='Symbol', how='left')
+    out = _merge_authoritative(out, closes)
     today = pd.Timestamp.now().normalize()
     age_days = (today - out['Cache_Last_Bar']).dt.days
     fresh = out['Cache_Last_Bar'].notna() & (age_days <= MAX_CACHE_AGE_DAYS)
@@ -388,7 +406,7 @@ def build_decision_brief() -> dict:
             if mom is not None:
                 ctx = [c for c in ['Symbol', 'EMFB_Score', 'Confidence'] if c in mom.columns]
                 if len(ctx) > 1:
-                    db_rows = db_rows.merge(mom[ctx], on='Symbol', how='left')
+                    db_rows = _merge_authoritative(db_rows, mom[ctx])
             return db_rows
         meta[f'{strategy.lower()}_source'] = 'fitness-tag fallback (eod has not persisted today)'
         if mom is None:
