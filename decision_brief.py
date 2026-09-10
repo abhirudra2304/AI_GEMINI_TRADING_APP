@@ -49,6 +49,7 @@ Reads only data already on disk - NO new API calls.
 """
 import logging
 import os
+import re
 import sqlite3
 from datetime import datetime, time as dtime
 from typing import Optional
@@ -445,9 +446,42 @@ def build_decision_brief() -> dict:
 # Presentation
 # --------------------------------------------------------------------------- #
 
-def _timing_notes() -> list:
+def _report_scan_time(report_path: Optional[str]) -> Optional[datetime]:
+    """Scan time parsed out of momentum_report_YYYYMMDD_HHMMSS.csv.
+
+    The filename is the only record of WHEN the underlying scan ran; the rows
+    themselves carry no scan timestamp."""
+    if not report_path:
+        return None
+    m = re.search(r'(\d{8})_(\d{6})', os.path.basename(report_path))
+    if not m:
+        return None
+    try:
+        return datetime.strptime(m.group(1) + m.group(2), '%Y%m%d%H%M%S')
+    except ValueError:
+        return None
+
+
+def _timing_notes(meta: Optional[dict] = None) -> list:
+    """Two independent clocks matter, and conflating them is a real bug.
+
+    WALL CLOCK decides whether a same-day BTST/SWING decision can still be
+    acted on (the 15:15 CAS deadline). REPORT VINTAGE decides whether the
+    numbers being shown have a real volume basis at all - Last_Hour_Vol and
+    the closing-strength factors are timing-gated, so a report SCANNED before
+    14:30 is weak no matter what time you happen to read it.
+
+    The first version only checked the wall clock, so at 14:50 on 2026-09-10
+    it printed a green "this is the right time for a same-day call" over a
+    report scanned at 14:10. The genuine 15:11 re-scan then moved COCHINSHIP
+    76.2 -> 65.9, straight out of the shortlist the tick had endorsed."""
+    meta = meta or {}
     now = datetime.now(config.MARKET_TZ).time()
     notes = []
+
+    scanned_at = _report_scan_time(meta.get('momentum_report'))
+    stale_basis = scanned_at is not None and scanned_at.time() < _CLOSING_FACTORS_VALID_FROM
+
     if now >= _CAS_START:
         notes.append("⚠️  Past 15:15 IST - the CAS window has opened, F&O pricing is frozen/"
                      "auction-set. BTST/SWING below are NOT actionable same-day; treat as "
@@ -456,9 +490,31 @@ def _timing_notes() -> list:
         notes.append("⚠️  Before 14:30 IST - last-hour volume and closing-strength factors are "
                      "not meaningful yet, so BTST conviction is weaker than it will look later. "
                      "Re-run ~14:55-15:10 for the real call.")
+    elif stale_basis:
+        notes.append("⚠️  The clock is inside the 14:30-15:15 decision window, but the momentum "
+                     f"report backing this brief was SCANNED at "
+                     f"{scanned_at.strftime('%H:%M')} - before 14:30. Last-hour volume and "
+                     "closing strength are therefore still the pre-14:30 fallback, so the BTST "
+                     "ranking below is not yet real. Run "
+                     "`python main.py momentum --force-refresh` (plain `momentum` will silently "
+                     "reuse the same cached scan) and re-run this brief.")
+    elif scanned_at is None:
+        # No report, or a filename this cannot date. Do not claim a verified basis
+        # for something that was never checked - "unknown" is not "good".
+        notes.append("⚠️  Inside the 14:30-15:15 decision window, but the backing momentum "
+                     "report's scan time could not be determined, so its volume basis is "
+                     "unverified. Treat the BTST ranking as provisional.")
     else:
-        notes.append("✅ Inside the 14:30-15:15 window - this is the right time for a same-day "
-                     "BTST/SWING call.")
+        notes.append("✅ Inside the 14:30-15:15 window and the backing report has a real "
+                     f"post-14:30 volume basis (report scanned "
+                     f"{scanned_at.strftime('%H:%M')}) - this is the right time for a "
+                     "same-day BTST/SWING call.")
+
+    if now >= _CAS_START and stale_basis:
+        notes.append(f"    ...and note the backing report was scanned at "
+                     f"{scanned_at.strftime('%H:%M')}, before 14:30, so its BTST volume basis "
+                     f"is the fallback rather than real last-hour data.")
+
     notes.append("GRIND is a multi-week entry with no same-day deadline - readable at any time.")
     return notes
 
@@ -469,7 +525,7 @@ def print_decision_brief(brief: dict, top_n: int = 10) -> None:
     print(f"DECISION BRIEF - {datetime.now(config.MARKET_TZ).strftime('%Y-%m-%d %H:%M:%S')} IST")
     print("=" * 108)
 
-    for note in _timing_notes():
+    for note in _timing_notes(meta):
         print(note)
 
     if not meta.get('momentum_report_is_today'):

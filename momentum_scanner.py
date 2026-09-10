@@ -90,6 +90,11 @@ def _is_scan_window(cfg: dict) -> bool:
     return True
 
 
+# Last-hour volume / closing-strength factors only become meaningful once the
+# final hour is underway; see _load_momentum_cache for the measured evidence.
+CLOSING_FACTORS_VALID_FROM = time(14, 30)
+
+
 def _load_momentum_cache(cfg: dict) -> Optional[pd.DataFrame]:
     if not os.path.exists(MOMENTUM_CACHE_PATH):
         return None
@@ -117,10 +122,34 @@ def _load_momentum_cache(cfg: dict) -> Optional[pd.DataFrame]:
     if now - created_at > timedelta(minutes=ttl_minutes):
         return None
 
+    # A scan taken before 14:30 and one taken after are not interchangeable, however
+    # recent the earlier one is. Last_Hour_Vol and the closing-strength factors are
+    # timing-gated: a 13:09 scan produced 11 unique Last_Hour_Vol values across 132
+    # rows (122 sharing one fallback) where a 15:28 scan produced 129 across 133.
+    # Serving the pre-14:30 scan across that boundary silently answers an afternoon
+    # question with morning data. Measured live 2026-09-10: `main.py momentum` at
+    # 14:35 reused Prewarm's 14:10 scan; the genuine 15:11 re-scan moved COCHINSHIP
+    # 76.2 -> 65.9 (out of the shortlist) and TAALTECH 86.4 -> 91.7. Same universe,
+    # same day, one hour apart.
+    if created_at.time() < CLOSING_FACTORS_VALID_FROM <= now.time():
+        logger.warning(
+            f"Momentum cache from {created_at.strftime('%H:%M:%S')} predates the "
+            f"{CLOSING_FACTORS_VALID_FROM.strftime('%H:%M')} closing-factors boundary and it is "
+            f"now {now.strftime('%H:%M:%S')} - discarding it and re-scanning, because "
+            f"last-hour volume and closing strength are not comparable across that line."
+        )
+        return None
+
     df = payload.get('df')
     if not isinstance(df, pd.DataFrame):
         return None
-    logger.info(f"⚡ Momentum cache hit: reusing scan from {created_at.strftime('%H:%M:%S')} ({len(df)} ranked symbols).")
+    # Loud on purpose: this is a full no-op masquerading as a scan. It was missed live
+    # on 2026-09-10 because it was a single INFO line in a busy log.
+    msg = (f"Momentum cache HIT - reusing the {created_at.strftime('%H:%M:%S')} scan "
+           f"({len(df)} ranked symbols). NO new data was fetched. "
+           f"Pass --force-refresh to actually re-scan.")
+    logger.warning(msg)
+    print(f"\n[!] {msg}\n")
     return df
 
 
