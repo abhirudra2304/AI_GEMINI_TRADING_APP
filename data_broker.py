@@ -9,7 +9,11 @@ import pyotp
 import pandas as pd
 from typing import Optional, Dict, Any, List, Callable
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as _dtime
+
+# NSE's continuous session ends 15:30 and the closing auction settles by 15:35.
+# A daily bar written before this is a running intraday price, not a close.
+DAILY_SETTLE_TIME = _dtime(15, 35)
 from dotenv import load_dotenv
 from utils import install_and_import
 import config
@@ -644,9 +648,6 @@ class DataBroker:
                     if not cached_df.empty and 'Timestamp' in cached_df.columns:
                         last_date = cached_df['Timestamp'].max()
                         if interval == 'ONE_DAY':
-                            # Next full calendar day - daily candles are one-per-day,
-                            # so there's nothing "partial" about today's row once it exists.
-                            start_date_for_api = (last_date + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
                             # Up-to-date means the cache's last row IS today's date, not
                             # merely that the next day to fetch would be today - the old
                             # `start_date_for_api.date() >= to_date.date()` check was true
@@ -654,7 +655,34 @@ class DataBroker:
                             # for today's candle on every ticker whose cache was exactly one
                             # day stale (see 2026-08-04 RS collapse: 191/204 tickers served
                             # yesterday's cache as "current", NaN-ing their composite score).
-                            is_up_to_date = last_date.date() >= to_date.date()
+                            #
+                            # ...but the row dated TODAY is not final either. A daily candle
+                            # requested mid-session returns Close = last traded price at that
+                            # moment. The old code assumed "there's nothing partial about
+                            # today's row once it exists", so the first scan of the day froze
+                            # a running price as that day's settled close, permanently.
+                            # Measured 2026-09-10: Nifty 50_ONE_DAY_200 (written 09-09 13:21)
+                            # held 23551.45 for 09-09 while _400 (written 09-09 18:20) held the
+                            # true 23431.50 - a 114-point error making the session read -0.38%
+                            # instead of -0.90%. Same shape on India VIX (11.56 vs 11.72) and
+                            # DIXON (14156 vs 14100). Every close-derived metric - Ret20d,
+                            # breadth, %>50DMA, RS - inherits it.
+                            #
+                            # A row dated today is therefore trusted only if the FILE was
+                            # written after that day's settle; otherwise re-fetch from today
+                            # 00:00 and let the keep='last' dedupe below overwrite it.
+                            last_d, today_d = last_date.date(), to_date.date()
+                            if last_d < today_d:
+                                start_date_for_api = (last_date + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                                is_up_to_date = False
+                            else:
+                                settle_dt = datetime.combine(today_d, DAILY_SETTLE_TIME)
+                                try:
+                                    written_at = datetime.fromtimestamp(os.path.getmtime(file_path))
+                                except OSError:
+                                    written_at = datetime.min
+                                is_up_to_date = written_at >= settle_dt
+                                start_date_for_api = last_date.replace(hour=0, minute=0, second=0, microsecond=0)
                         else:  # ONE_HOUR / FIFTEEN_MINUTE / FIVE_MINUTE
                             # Just past the last cached candle's own timestamp - unlike
                             # ONE_DAY there's no "start of next period" rounding needed,
@@ -731,11 +759,22 @@ class DataBroker:
                             combined_df.reset_index(drop=True, inplace=True)
                             
                             downloaded_count = len(combined_df) - initial_count
-                            
-                            if downloaded_count > 0:
+                            # A re-fetched provisional bar REPLACES a row rather than adding
+                            # one, so row count alone reports "nothing downloaded" and skips
+                            # the save - discarding the correction just fetched. Compare
+                            # content, not length.
+                            try:
+                                content_changed = not combined_df.equals(
+                                    cached_df.sort_values(by='Timestamp').reset_index(drop=True)
+                                )
+                            except Exception:
+                                content_changed = True
+
+                            if downloaded_count > 0 or content_changed:
                                 combined_df.to_parquet(file_path, compression='snappy')
                                 profiler.log_cache_event('save')
-                                print(f"\n[Cache] Loaded {initial_count}, Downloaded {downloaded_count}, Saved {len(combined_df)}")
+                                revised = " (revised provisional bar)" if downloaded_count == 0 else ""
+                                print(f"\n[Cache] Loaded {initial_count}, Downloaded {downloaded_count}, Saved {len(combined_df)}{revised}")
                             else:
                                 logger.info(f"No new candles found for {symbol}. Cache is current.")
                                 os.utime(file_path, None)
