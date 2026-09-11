@@ -8,6 +8,7 @@ Gemini 2.5 Computer Vision to evaluate:
 4. Visual Quality Score (1.0 to 10.0) & Key Breakout Pivot Levels
 """
 import io
+import config
 import json
 import logging
 import os
@@ -25,7 +26,12 @@ from dotenv import load_dotenv
 
 from utils import install_and_import
 
-load_dotenv()
+# override=True: this project's .env is the authority for its OWN
+# credentials. Without it load_dotenv() silently defers to whatever is
+# already in the environment - and a stale OS-level GEMINI_API_KEY (13
+# chars) shadowed the real 39-char .env key, so every Gemini call failed
+# 400 API_KEY_INVALID no matter how often .env was corrected (2026-09-11).
+load_dotenv(override=True)
 logger = logging.getLogger(__name__)
 
 CHARTS_DIR = 'charts'
@@ -243,7 +249,7 @@ def evaluate_chart_with_gemini(image_bytes: bytes, symbol: str) -> Dict[str, Any
             pass
 
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model=config.GEMINI_MODEL,
             contents=[image_part, prompt],
             config=types.GenerateContentConfig(**config_kwargs) if config_kwargs else None
         )

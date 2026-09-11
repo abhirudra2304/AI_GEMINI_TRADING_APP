@@ -22,7 +22,12 @@ from dotenv import load_dotenv
 import config
 from utils import install_and_import
 
-load_dotenv()
+# override=True: this project's .env is the authority for its OWN
+# credentials. Without it load_dotenv() silently defers to whatever is
+# already in the environment - and a stale OS-level GEMINI_API_KEY (13
+# chars) shadowed the real 39-char .env key, so every Gemini call failed
+# 400 API_KEY_INVALID no matter how often .env was corrected (2026-09-11).
+load_dotenv(override=True)
 logger = logging.getLogger(__name__)
 
 ANNOUNCEMENTS_URL = "https://www.nseindia.com/api/corporate-announcements"
@@ -209,7 +214,7 @@ def analyze_catalysts_with_gemini(df: pd.DataFrame, max_items: int = 15) -> pd.D
             pass
 
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model=config.GEMINI_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(**config_kwargs) if config_kwargs else None
         )

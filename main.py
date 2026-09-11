@@ -463,7 +463,12 @@ def run_system_check():
         print('  ❌ CRITICAL: `.env` file not found. Please create it by copying `example.env` and filling in your credentials.')
         return
 
-    load_dotenv(dotenv_path=dotenv_path)
+    # override=True: this project's .env is the authority for its OWN
+    # credentials. Without it load_dotenv() silently defers to whatever is
+    # already in the environment - and a stale OS-level GEMINI_API_KEY (13
+    # chars) shadowed the real 39-char .env key, so every Gemini call failed
+    # 400 API_KEY_INVALID no matter how often .env was corrected (2026-09-11).
+    load_dotenv(dotenv_path=dotenv_path, override=True)
     required_keys = ['ANGEL_API_KEY', 'ANGEL_CLIENT_CODE', 'ANGEL_PASSWORD', 'ANGEL_TOTP_KEY', 'GEMINI_API_KEY']
     all_keys_found = True
     for key in required_keys:

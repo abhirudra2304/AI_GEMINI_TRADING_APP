@@ -247,7 +247,7 @@ def fetch_gemini_news(symbols: list) -> str:
             try:
                 # 3. New generate_content syntax (also upgrading you to 2.5-flash)
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model=config.GEMINI_MODEL,
                     contents=prompt,
                     config=config
                 )

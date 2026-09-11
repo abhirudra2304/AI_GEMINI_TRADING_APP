@@ -5,6 +5,7 @@ This file consolidates all tunable parameters, thresholds, and static data
 to make the system easier to manage, tune, and deploy.
 """
 
+import os
 from zoneinfo import ZoneInfo
 
 # --- General Application Settings ---
@@ -16,6 +17,14 @@ class AppConfig:
     DEBUG_REPORT = False
 
 MARKET_TZ = ZoneInfo("Asia/Kolkata")
+
+# Gemini model for news / catalyst / chart narration. Override with the
+# GEMINI_MODEL env var. Defaults to the floating "latest" alias deliberately:
+# pinned point versions get withdrawn server-side and start returning 404 with
+# no warning. gemini-2.5-flash was hardcoded in three modules and was already
+# dead ("no longer available") when checked on 2026-09-11, which - stacked on
+# top of the shadowed API key - is why Gemini features looked permanently broken.
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
 
 # --- Data Caching ---
 class CacheConfig:
