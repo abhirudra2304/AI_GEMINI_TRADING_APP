@@ -70,7 +70,15 @@ INVOCATION_RE = re.compile(
 REDIRECT_RE = re.compile(r"\d*(?:>>?|<)&?\d*\S*")
 
 
-_QUOTED_SPAN_RE = re.compile(r"'[^']*'|\"[^\"]*\"", re.DOTALL)
+# Backticks are included deliberately. Heredocs that write markdown - memory
+# notes, commit bodies, docs - quote commands as markdown code spans, and
+# without stripping those the hook reads the trailing backtick as part of the
+# mode token and blocks a plain file write over a mode name it would otherwise
+# allow (caught 2026-09-11 writing a note containing a code span for the `news`
+# mode). Backticks also mean command substitution in sh, but this hook only has
+# to decide "is main.py being executed here", and a substitution that produces
+# an invocation is not a shape worth chasing.
+_QUOTED_SPAN_RE = re.compile(r"'[^']*'|\"[^\"]*\"|`[^`]*`", re.DOTALL)
 
 
 def extract_mode(command: str) -> tuple[bool, str | None]:
