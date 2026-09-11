@@ -1,69 +1,69 @@
 {
   "emfb": {
-    "generated_at": "2026-08-25T14:01:27",
+    "generated_at": "2026-09-11T20:04:36",
     "overall": {
-      "Resolved": "445",
-      "Wins": "109",
-      "Losses": "336",
-      "Win_Rate_Pct": 24.5,
-      "Total_Signals": 1084,
-      "Still_Open": 639
+      "Resolved": "1150",
+      "Wins": "221",
+      "Losses": "929",
+      "Win_Rate_Pct": 19.2,
+      "Total_Signals": 1858,
+      "Still_Open": 708
     },
     "by_confidence": [
       {
         "Confidence": "High",
-        "Resolved": 57.0,
-        "Wins": 21.0,
-        "Losses": 36.0,
-        "Win_Rate_Pct": 36.8
+        "Resolved": 139.0,
+        "Wins": 43.0,
+        "Losses": 96.0,
+        "Win_Rate_Pct": 30.9
       },
       {
         "Confidence": "Low",
-        "Resolved": 247.0,
-        "Wins": 51.0,
-        "Losses": 196.0,
-        "Win_Rate_Pct": 20.6
+        "Resolved": 608.0,
+        "Wins": 102.0,
+        "Losses": 506.0,
+        "Win_Rate_Pct": 16.8
       },
       {
         "Confidence": "Medium",
-        "Resolved": 141.0,
-        "Wins": 37.0,
-        "Losses": 104.0,
-        "Win_Rate_Pct": 26.2
+        "Resolved": 403.0,
+        "Wins": 76.0,
+        "Losses": 327.0,
+        "Win_Rate_Pct": 18.9
       }
     ]
   },
   "momentum": {
-    "generated_at": "2026-08-25T14:14:56",
+    "generated_at": "2026-09-11T20:11:44",
     "overall": {
-      "Resolved": "724",
-      "Wins": "132",
-      "Losses": "592",
-      "Win_Rate_Pct": 18.2,
-      "Total_Signals": 2983,
-      "Still_Open": 2259
+      "Resolved": "4119",
+      "Wins": "622",
+      "Losses": "3497",
+      "Win_Rate_Pct": 15.1,
+      "Total_Signals": 6600,
+      "Still_Open": 2481
     },
     "by_confidence": [
       {
         "Confidence": "High",
-        "Resolved": 39.0,
-        "Wins": 15.0,
-        "Losses": 24.0,
-        "Win_Rate_Pct": 38.5
+        "Resolved": 217.0,
+        "Wins": 69.0,
+        "Losses": 148.0,
+        "Win_Rate_Pct": 31.8
       },
       {
         "Confidence": "Low",
-        "Resolved": 468.0,
-        "Wins": 65.0,
-        "Losses": 403.0,
-        "Win_Rate_Pct": 13.9
+        "Resolved": 2530.0,
+        "Wins": 302.0,
+        "Losses": 2228.0,
+        "Win_Rate_Pct": 11.9
       },
       {
         "Confidence": "Medium",
-        "Resolved": 217.0,
-        "Wins": 52.0,
-        "Losses": 165.0,
-        "Win_Rate_Pct": 24.0
+        "Resolved": 1372.0,
+        "Wins": 251.0,
+        "Losses": 1121.0,
+        "Win_Rate_Pct": 18.3
       }
     ]
   },
