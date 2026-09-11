@@ -87,6 +87,17 @@ def extract_mode(command: str) -> tuple[bool, str | None]:
     if not match:
         return False, None
 
+    # `python -m <module> main.py` runs <module> and passes main.py to it as an
+    # ARGUMENT - it does not execute main.py. py_compile, pyflakes, black, pytest
+    # and friends all take that shape. Without this guard the hook read
+    # `python -m py_compile main.py` as "main.py with no mode" and blocked a
+    # plain syntax check (caught 2026-09-11). Only treat it as an invocation if
+    # the -m module IS main.
+    before = command[match.start():match.start("rest")]
+    m_flag = re.search(r"(?<![\w-])-m\s+(\S+)", before)
+    if m_flag and m_flag.group(1) not in ("main", "main.py"):
+        return False, None
+
     rest = REDIRECT_RE.sub(" ", match.group("rest"))
     for tok in rest.split():
         if tok.startswith("-"):

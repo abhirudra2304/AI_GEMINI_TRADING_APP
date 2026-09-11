@@ -11,6 +11,14 @@ from venv_activator import ensure_venv
 ensure_venv()
 # --------------------------
 
+# Scrub secrets from the logging stack BEFORE any other import can create a
+# logger or emit a record. The vendored SmartAPI client interpolates full
+# request headers - live X-PrivateKey and Authorization bearer - into its error
+# messages on every AB1021, which had put the API key into 90 log files and
+# bearer tokens into 59 before this was caught (2026-09-11).
+from log_redaction import install_redaction
+install_redaction()
+
 import threading
 import subprocess
 import ctypes

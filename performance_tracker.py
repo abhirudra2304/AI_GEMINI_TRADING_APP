@@ -47,6 +47,26 @@ def build_scorecard(report_type: str, broker: Optional[DataBroker] = None) -> pd
     disk, the same symbol often reappears multiple times.
     """
     history = build_history(report_type)
+    if not history.empty:
+        # A single malformed report file must not take down the whole scorecard.
+        # Two pytest fixtures (symbols "A"/"B", no `timestamp` column) were written
+        # into the working directory on 2026-09-01 19:14 and sat there unnoticed;
+        # pd.Timestamp(NaN) -> NaT, and NaT.tz_localize(None).normalize() raises
+        # AttributeError. That single AttributeError killed every `main.py scorecard`
+        # run from then on, so tier_performance.json silently stopped updating for
+        # 11 days and the only measurement infrastructure with real sample size was
+        # dead without anyone seeing an error. Drop unusable rows loudly instead.
+        before = len(history)
+        parsed = pd.to_datetime(history['timestamp'], errors='coerce', format='mixed')             if 'timestamp' in history.columns else pd.Series(pd.NaT, index=history.index)
+        history = history.loc[parsed.notna()].copy()
+        history['timestamp'] = parsed.loc[parsed.notna()]
+        dropped = before - len(history)
+        if dropped:
+            logger.warning(
+                "Scorecard: dropped %d/%d signal row(s) with an unparseable or missing "
+                "timestamp - check for malformed report CSVs in the working directory.",
+                dropped, before,
+            )
     if history.empty:
         return history
 
