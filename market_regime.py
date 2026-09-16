@@ -22,11 +22,21 @@ class MarketRegime:
         self.results = {}
 
     def _fetch_data(self):
-        """Fetches only the essential data for indices and VIX."""
+        """Fetches only the essential data for indices and VIX.
+
+        days_back matches the values other live call sites already use for
+        these same symbols (Nifty 50 at 400 in discovery, the top-level runner
+        and the point-in-time backtest path; VIX at 250 in extension_score.py)
+        - a mismatched days_back makes the cache treat it as a DIFFERENT file
+        and refetch separately, doubling real API traffic for no benefit
+        (found 2026-09-16 auditing AB1021 contention). verify_settlement=False
+        because this is regime-score context, not a reported trigger/stop/
+        target - it doesn't need today's provisional bar re-verified against
+        settle time on every cache-TTL lapse."""
         for index in self.indices:
-            self.data[index] = self.broker.fetch_ohlcv(index, 'ONE_DAY', 200, caller="MarketRegime")
-        
-        self.data[self.vix_symbol] = self.broker.fetch_ohlcv(self.vix_symbol, 'ONE_DAY', 50, caller="MarketRegime")
+            self.data[index] = self.broker.fetch_ohlcv(index, 'ONE_DAY', 400, caller="MarketRegime", verify_settlement=False)
+
+        self.data[self.vix_symbol] = self.broker.fetch_ohlcv(self.vix_symbol, 'ONE_DAY', 250, caller="MarketRegime", verify_settlement=False)
 
     def _calculate_trends(self) -> Dict[str, Any]:
         """Calculates the trend for major indices."""

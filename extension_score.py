@@ -80,7 +80,11 @@ def _get_point_in_time_vix(broker: DataBroker, as_of_date: pd.Timestamp, vix_cac
     """Fetches point-in-time India VIX close on or before as_of_date."""
     if 'vix_df' not in vix_cache:
         try:
-            vix_df = broker.fetch_ohlcv("India VIX", "ONE_DAY", 250, caller="ExtensionScore")
+            # verify_settlement=False - point-in-time VIX context for a distance
+            # score, not a reported trigger/stop/target; the provisional value is
+            # fine, and this already shares the days_back=250 cache file with
+            # market_regime.py's VIX fetch so the two don't refetch separately.
+            vix_df = broker.fetch_ohlcv("India VIX", "ONE_DAY", 250, caller="ExtensionScore", verify_settlement=False)
             if vix_df is not None and not vix_df.empty:
                 vix_dates = vix_df.index.tz_localize(None) if vix_df.index.tz is not None else vix_df.index
                 vix_df = vix_df.set_axis(vix_dates).sort_index()

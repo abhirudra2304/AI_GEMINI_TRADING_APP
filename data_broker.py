@@ -576,7 +576,9 @@ class DataBroker:
         except Exception as e:
             logger.error(f"Angel One session refresh FAILED: {e}")
 
-    def fetch_ohlcv(self, symbol: str, interval: str, days_back: int, force_refresh: bool = False, caller: str = "Unknown", end_date: Optional[datetime] = None) -> pd.DataFrame:
+    def fetch_ohlcv(self, symbol: str, interval: str, days_back: int, force_refresh: bool = False,
+                 caller: str = "Unknown", end_date: Optional[datetime] = None,
+                 verify_settlement: bool = True) -> pd.DataFrame:
         """
         Fetches historical data with optimized read-through caching.
         For ONE_DAY interval, it performs incremental updates to the cache.
@@ -678,8 +680,23 @@ class DataBroker:
                             # 00:00 and let the keep='last' dedupe below overwrite it.
                             last_d, today_d = last_date.date(), to_date.date()
                             if last_d < today_d:
+                                # A genuinely missing day - always fetch it, regardless of
+                                # verify_settlement. That flag only governs whether an
+                                # ALREADY-CACHED today's row gets re-verified against settle
+                                # time; it never excuses skipping a day we don't have at all.
                                 start_date_for_api = (last_date + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
                                 is_up_to_date = False
+                            elif not verify_settlement:
+                                # Low-stakes callers (regime/extension-score context, not a
+                                # reported trigger/stop/target) don't need today's provisional
+                                # bar re-verified against settle time on every 1h TTL lapse -
+                                # that was forcing a real API call for VIX/index context on
+                                # every regime check, all session, for a value nobody acts on
+                                # directly. Accept the cached provisional value as-is; anything
+                                # that DOES need the settled price (brief, EOD, analyze, the
+                                # main momentum scan) still calls with the default True.
+                                is_up_to_date = True
+                                start_date_for_api = last_date.replace(hour=0, minute=0, second=0, microsecond=0)
                             else:
                                 settle_dt = datetime.combine(today_d, DAILY_SETTLE_TIME)
                                 try:
