@@ -235,7 +235,7 @@ def fetch_gemini_news(symbols: list) -> str:
         )
         
         # 2. Configure the Google Search tool using the new types module
-        config = types.GenerateContentConfig(
+        gen_config = types.GenerateContentConfig(
             tools=[{"google_search": {}}]
         )
 
@@ -249,7 +249,7 @@ def fetch_gemini_news(symbols: list) -> str:
                 response = client.models.generate_content(
                     model=config.GEMINI_MODEL,
                     contents=prompt,
-                    config=config
+                    config=gen_config
                 )
                 break  # Success
             except Exception as e:
