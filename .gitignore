@@ -84,6 +84,7 @@ bhavcopy_validation_*.csv
 
 # --- Downloaded market data caches (large, re-fetchable) ---
 bhavcopy_cache/
+delivery_cache/
 charts/
 _diagnostic_scans/
 
