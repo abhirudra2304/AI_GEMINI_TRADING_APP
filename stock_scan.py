@@ -209,6 +209,31 @@ def _apply_reliability_flag(df: pd.DataFrame, t0: float) -> pd.DataFrame:
         return df
 
 
+def _apply_tradability_flag(df: pd.DataFrame, t0: float, symbol_col: str = 'Symbol') -> pd.DataFrame:
+    """Informational-only, same convention as the reliability flag: marks names in
+    NSE's trade-for-trade (BE) series or under ASM/GSM surveillance (tradability.py),
+    never filters. Loud-prints NO_BTST names - a BTST on a BE-series stock risks
+    short delivery, which is exactly what should surface at decision time."""
+    try:
+        from tradability import load_status, annotate_tradability
+        status, source = load_status()
+        out = annotate_tradability(df, status, symbol_col=symbol_col)
+        flagged = out[out['Tradability_Flag'].isin(['NO_BTST', 'CAUTION'])]
+        if not flagged.empty:
+            print(f"\n  ⚠️ TRADABILITY WARNING - {len(flagged)} name(s) are trade-for-trade or under NSE surveillance:")
+            for _, row in flagged.iterrows():
+                print(f"      {row[symbol_col]}: {row['Tradability_Flag']} - {row['Tradability_Note']}")
+        _phase(f"Tradability: {(out['Tradability_Flag'] == 'NO_BTST').sum()} NO_BTST, "
+               f"{(out['Tradability_Flag'] == 'CAUTION').sum()} CAUTION, "
+               f"{(out['Tradability_Flag'] == 'UNKNOWN').sum()} UNKNOWN ({source}).", t0)
+        return out
+    except Exception as e:
+        logger.warning(f"Tradability step failed ({e}); marking UNKNOWN.")
+        df['Tradability_Flag'] = 'UNKNOWN'
+        df['Tradability_Note'] = ''
+        return df
+
+
 def _print_btst_swing_bridge(t0: float) -> None:
     """Prints today's persisted BTST/SWING signals (if any) as a supplementary
     section - the "KEI problem" fix (flagged 2026-08-12): stockscan's main
@@ -266,12 +291,13 @@ def _print_btst_swing_bridge(t0: float) -> None:
             for strategy, group in df.groupby('strategy')
         ]
         df = pd.concat(annotated, ignore_index=True) if annotated else df
+        df = _apply_tradability_flag(df, t0, symbol_col='symbol')
 
         print("\n" + "-" * 100)
         print("BTST/SWING SIGNALS (separate pipeline - not part of the EMFB shortlist above)")
         print("-" * 100)
         cols = [c for c in ['symbol', 'strategy', 'score', 'Confidence', 'Actionability',
-                             'Tier_Win_Rate_Pct', 'entry', 'stop', 'target', 'timestamp'] if c in df.columns]
+                             'Tier_Win_Rate_Pct', 'Tradability_Flag', 'entry', 'stop', 'target', 'timestamp'] if c in df.columns]
         print(df[cols].to_string(index=False))
         print("-" * 100)
         _phase(f"BTST/SWING bridge: {len(df)} signal(s) from today's persisted EOD run.", t0)
@@ -310,6 +336,7 @@ def run_stock_scan(report_type: str = 'momentum', top_n: int = 15) -> pd.DataFra
     shortlist = _apply_extension(shortlist, t0)
     shortlist = _apply_catalyst(shortlist, t0)
     shortlist = _apply_reliability_flag(shortlist, t0)
+    shortlist = _apply_tradability_flag(shortlist, t0)
 
     # Final ordering: proven-tier + fresh-entry (NORMAL extension) first, then by score.
     ext_rank = {'NORMAL': 0, 'EXTENDED': 1, 'VERY_EXTENDED': 2}
@@ -331,7 +358,8 @@ def _print_shortlist(df: pd.DataFrame, score_col: Optional[str], t0: float) -> N
     print("-" * 100)
     cols = [c for c in [
         'Symbol', score_col, 'Confidence', 'Tier_Win_Rate_Pct', 'Actionability',
-        'Extension_Flag', 'Grind_Flag', 'Move_Stage', 'Catalyst', 'Earnings_Risk', 'Trigger', 'Stop', 'Target'
+        'Extension_Flag', 'Grind_Flag', 'Move_Stage', 'Catalyst', 'Earnings_Risk', 'Tradability_Flag',
+        'Trigger', 'Stop', 'Target'
     ] if c and c in df.columns]
     if df.empty:
         print("  (shortlist empty after filters)")
@@ -339,5 +367,6 @@ def _print_shortlist(df: pd.DataFrame, score_col: Optional[str], t0: float) -> N
         print(df[cols].to_string(index=False))
     print("-" * 100)
     print(f"Done in {time.time() - t0:.1f}s.  Legend: Extension NORMAL=fresh entry, EXTENDED/VERY=chasing; "
-          f"Catalyst HIGH/MED=fresh NSE filing; verify HIGH-RISK earnings before entry.")
+          f"Catalyst HIGH/MED=fresh NSE filing; verify HIGH-RISK earnings before entry; "
+          f"Tradability NO_BTST=trade-for-trade/surveillance (no BTST), CAUTION=ASM Stage I-II.")
     print("Reminder: shortlist ranks trade SETUPS - not buy advice. Read the chart/filing before acting.")

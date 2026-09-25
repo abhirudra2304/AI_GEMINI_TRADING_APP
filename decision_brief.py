@@ -222,7 +222,7 @@ def _merge_authoritative(left: pd.DataFrame, right: pd.DataFrame, on: str = 'Sym
 
 
 def _enrich(df: pd.DataFrame, stage: pd.DataFrame, reliability: Optional[pd.DataFrame],
-            closes: pd.DataFrame) -> pd.DataFrame:
+            closes: pd.DataFrame, tradability: Optional[pd.DataFrame] = None) -> pd.DataFrame:
     """Attaches stage, reliability and price-sanity columns. Left joins only -
     a symbol missing from any input keeps its row and gets a blank/neutral
     value, never gets dropped silently here (sections do their own explicit
@@ -258,7 +258,8 @@ def _enrich(df: pd.DataFrame, stage: pd.DataFrame, reliability: Optional[pd.Data
     out['Reliability_Flag'] = out['Reliability_Flag'].fillna('INSUFFICIENT_DATA')
 
     out = _check_triggers(out, closes)
-    return out
+    from tradability import annotate_tradability
+    return annotate_tradability(out, tradability)
 
 
 def _check_triggers(df: pd.DataFrame, closes: pd.DataFrame) -> pd.DataFrame:
@@ -305,7 +306,7 @@ def _fitness_eligible(fitness: Optional[pd.DataFrame], tag: str) -> set:
     return set(fitness.loc[mask, 'Symbol'])
 
 
-def _apply_section_filters(df: pd.DataFrame, exclude_stages: list) -> tuple:
+def _apply_section_filters(df: pd.DataFrame, exclude_stages: list, drop_no_btst: bool = False) -> tuple:
     """Returns (kept, dropped_reasons dict, needs_verification df).
 
     Stale-cache rows are SEPARATED, not kept and not silently dropped. Without
@@ -351,6 +352,15 @@ def _apply_section_filters(df: pd.DataFrame, exclude_stages: list) -> tuple:
     if n - len(out):
         dropped['PRICE_SUSPECT'] = n - len(out)
 
+    # BE (trade-for-trade) / ASM Stage III+ / GSM names cannot be sold before
+    # delivery without short-delivery risk - unusable for a one-night hold.
+    # SWING/GRIND keep them (multi-day holds settle first) but show the flag.
+    if drop_no_btst and 'Tradability_Flag' in out.columns:
+        n = len(out)
+        out = out[out['Tradability_Flag'] != 'NO_BTST']
+        if n - len(out):
+            dropped['NO_BTST (trade-for-trade/surveillance)'] = n - len(out)
+
     return out, dropped, needs_verification
 
 
@@ -386,6 +396,11 @@ def build_decision_brief() -> dict:
     reliability = _load_reliability()
     stage = _build_stage_table(mom)
     closes = _latest_cached_closes()
+    try:
+        from tradability import load_status
+        tradability, meta['tradability_source'] = load_status()
+    except Exception as e:
+        tradability, meta['tradability_source'] = None, f"UNAVAILABLE ({e}) - all names marked UNKNOWN"
 
     meta['momentum_report'] = mom.attrs.get('source_path') if mom is not None else None
     meta['momentum_report_is_today'] = bool(
@@ -415,16 +430,16 @@ def build_decision_brief() -> dict:
         eligible = _fitness_eligible(fitness, tag)
         return mom[mom['Symbol'].isin(eligible)].copy() if eligible else mom.iloc[0:0].copy()
 
-    btst = _enrich(_strategy_frame('BTST', 'BTST_ELIGIBLE'), stage, reliability, closes)
-    swing = _enrich(_strategy_frame('SWING', 'SWING_ELIGIBLE'), stage, reliability, closes)
+    btst = _enrich(_strategy_frame('BTST', 'BTST_ELIGIBLE'), stage, reliability, closes, tradability)
+    swing = _enrich(_strategy_frame('SWING', 'SWING_ELIGIBLE'), stage, reliability, closes, tradability)
 
     if mom is not None and not stage.empty:
         grind_syms = set(stage.loc[stage['Grind_Flag'].isin(['GRIND', 'HIDDEN', 'QUALITY']), 'Symbol'])
-        grind = _enrich(mom[mom['Symbol'].isin(grind_syms)].copy(), stage, reliability, closes)
+        grind = _enrich(mom[mom['Symbol'].isin(grind_syms)].copy(), stage, reliability, closes, tradability)
     else:
-        grind = _enrich(pd.DataFrame(), stage, reliability, closes)
+        grind = _enrich(pd.DataFrame(), stage, reliability, closes, tradability)
 
-    btst, meta['dropped']['btst'], stale_btst = _apply_section_filters(btst, ['EXTENDED', 'STALLING'])
+    btst, meta['dropped']['btst'], stale_btst = _apply_section_filters(btst, ['EXTENDED', 'STALLING'], drop_no_btst=True)
     swing, meta['dropped']['swing'], stale_swing = _apply_section_filters(swing, ['STALLING'])
     grind, meta['dropped']['grind'], stale_grind = _apply_section_filters(grind, ['EXTENDED', 'STALLING'])
 
@@ -534,6 +549,7 @@ def print_decision_brief(brief: dict, top_n: int = 10) -> None:
     print(f"\nBTST source : {meta.get('btst_source', 'unavailable')}")
     print(f"SWING source: {meta.get('swing_source', 'unavailable')}")
     print(f"Stage data  : {meta.get('stage_rows', 0)} symbols (computed fresh from daily cache)")
+    print(f"Tradability : {meta.get('tradability_source', 'not checked')}")
 
     def _section(name: str, df: pd.DataFrame, cols: list, dropped: dict) -> None:
         print("\n" + "-" * 108)
@@ -550,11 +566,11 @@ def print_decision_brief(brief: dict, top_n: int = 10) -> None:
                   f"the header count above is the real total.")
 
     common = ['Symbol', 'EMFB_Score', 'Engine_Score', 'Confidence', 'Move_Stage', 'Grind_Flag',
-              'Reliability_Flag', 'Win_Rate', 'Trigger', 'Stop', 'Target', 'Trigger_Check']
+              'Reliability_Flag', 'Win_Rate', 'Trigger', 'Stop', 'Target', 'Trigger_Check', 'Tradability_Flag']
     _section("BTST CANDIDATES", brief['btst'], common, meta['dropped'].get('btst', {}))
     _section("SWING CANDIDATES", brief['swing'], common, meta['dropped'].get('swing', {}))
     grind_cols = ['Symbol', 'EMFB_Score', 'Move_Stage', 'Grind_Flag', 'Ret20d_Pct',
-                  'Reliability_Flag', 'Win_Rate', 'Trigger', 'Stop', 'Target', 'Trigger_Check']
+                  'Reliability_Flag', 'Win_Rate', 'Trigger', 'Stop', 'Target', 'Trigger_Check', 'Tradability_Flag']
     _section("GRIND CANDIDATES", brief['grind'], grind_cols, meta['dropped'].get('grind', {}))
 
     nv = brief.get('needs_verification', pd.DataFrame())
@@ -579,6 +595,8 @@ def print_decision_brief(brief: dict, top_n: int = 10) -> None:
           "PRICE_SUSPECT rows whose trigger disagrees with the cached close by "
           f">{MAX_TRIGGER_DEVIATION_PCT:.0f}%.")
     print("UNVERIFIED trigger = cache too stale to check, not a bad price - verify manually.")
+    print("Tradability: NO_BTST = trade-for-trade (BE) / ASM Stage III+ / GSM - dropped from BTST, "
+          "flagged elsewhere; CAUTION = ASM Stage I-II (higher margin); UNKNOWN = could not be checked.")
     print("=" * 108)
 
 
