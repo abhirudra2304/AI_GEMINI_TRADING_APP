@@ -17,6 +17,26 @@ DAILY_SETTLE_TIME = _dtime(15, 35)
 from dotenv import load_dotenv
 from utils import install_and_import
 import config
+from log_redaction import install_redaction, redact
+
+# main.py installs this too, but any other entry point that imports data_broker
+# (ad-hoc scripts, quote checks) would otherwise log raw request headers.
+install_redaction()
+
+
+def _scrub_exception(exc: Optional[BaseException]) -> None:
+    """Redacts secrets in an exception's args, and in its cause/context chain, in place."""
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        try:
+            exc.args = tuple(
+                redact(a) if isinstance(a, str) else (_scrub_exception(a) or a if isinstance(a, BaseException) else a)
+                for a in exc.args
+            )
+        except Exception:
+            pass
+        exc = exc.__cause__ or exc.__context__
 
 # Ensure critical dependencies are available, installing them if necessary.
 # NOTE: the installable pip package is "smartapi-python", but the importable
@@ -495,7 +515,11 @@ class DataBroker:
         """
         self._enforce_api_rate_limit()
         start_time = time.monotonic()
-        response = api_func(*args, **kwargs)
+        try:
+            response = api_func(*args, **kwargs)
+        except Exception as e:
+            _scrub_exception(e)
+            raise
         duration = time.monotonic() - start_time
         profiler.log_timing('api_call', duration)
         return response

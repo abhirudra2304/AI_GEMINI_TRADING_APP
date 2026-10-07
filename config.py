@@ -83,6 +83,9 @@ class Universe:
     # Recent IPOs (added 2026-09-25): >= 65 sessions of history, >= Rs 10 cr/day median
     # turnover, EQ series, not NO_BTST. No resolved-trade history yet -> INSUFFICIENT_DATA.
     "MEESHO", "LGEINDIA", "LENSKART", "GROWW", "SUDEEPPHRM", "CAPILLARY",
+    # Added 2026-10-06 at the user's request. Median turnover is under the Rs 10 cr/day bar
+    # used for the IPOs above (8.7 cr over 60 sessions), so scores here are thin-liquidity.
+    "KRISHNADEF",
 ]
 
     # Institutional Sector Mappings
@@ -155,6 +158,7 @@ class Universe:
         # --- Recent IPOs (added 2026-09-25) ---
         'MEESHO': 'RETAIL', 'LENSKART': 'RETAIL', 'LGEINDIA': 'CONSUMER',
         'GROWW': 'FINANCE', 'SUDEEPPHRM': 'CHEMICALS', 'CAPILLARY': 'IT',
+        'KRISHNADEF': 'DEFENCE',
     }
 
     # Mapping from SECTOR_MAP values to Nifty Index symbols for RS calculations
