@@ -263,6 +263,10 @@ def fetch_gemini_news(symbols: list) -> str:
 
         return response.text.strip() if response and response.text else "⚠️ Gemini returned an empty response."
     except Exception as e:
+        if "RESOURCE_EXHAUSTED" in str(e):
+            # Quota/billing, not a code fault: no traceback, and the report says so.
+            logger.warning("Gemini news skipped: API quota exhausted (429). Check usage at ai.dev/rate-limit.")
+            return "⚠️ Gemini news unavailable: API quota exhausted."
         logger.error(f"Failed to fetch news from Gemini API: {e}", exc_info=True)
         return "⚠️ Failed to fetch news from Gemini API. See logs for details."
 def print_btst_ranking_shift(df_signals: pd.DataFrame):

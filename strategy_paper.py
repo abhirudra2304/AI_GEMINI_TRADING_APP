@@ -57,7 +57,11 @@ def cmd_update(_args=None):
             r = s.get(f"https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_{d:%d%m%Y}.csv",
                       headers=NSE_HEADERS, timeout=30)
             if r.status_code == 404:
-                missing.add(key)
+                # A 404 on today's date only means NSE has not published it yet
+                # (it posts in the evening); marking it missing made the update skip
+                # 09-29 and 10-06..10-08 forever.
+                if d < date.today():
+                    missing.add(key)
             elif r.status_code == 200:
                 try:
                     df = pd.read_csv(io.StringIO(r.text)); df.columns = df.columns.str.strip()

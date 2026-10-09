@@ -55,3 +55,18 @@ def test_log_handler_redacts_preformatted_headers_dump():
     rec = logging.LogRecord("t", logging.ERROR, __file__, 1, msg, None, None)
     h.handle(rec)
     assert FAKE_JWT not in rec.getMessage()
+
+
+def test_percent_placeholder_inside_quoted_secret_still_formats_and_redacts():
+    h = logging.StreamHandler()
+    rec = logging.LogRecord("t", logging.ERROR, __file__, 1,
+                            "Headers: {'Authorization': 'Bearer %s'}", (FAKE_JWT,), None)
+    h.handle(rec)
+    assert FAKE_JWT not in rec.getMessage()
+
+
+def test_smallcap_index_alias_resolves_to_angel_name():
+    b = DataBroker.__new__(DataBroker)
+    key = b._normalize_symbol_key("NIFTY SMLCAP 100")
+    b.symbol_index = {key: [{"token": "99926032", "symbol": "NIFTY SMLCAP 100"}]}
+    assert b._resolve_symbol_row("NIFTY SMALLCAP 100")["token"] == "99926032"

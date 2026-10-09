@@ -463,6 +463,11 @@ class DataBroker:
             symbol = 'NIFTY BANK'
         elif s_lower in ['india vix', 'vix']:
             symbol = 'India VIX'
+        elif s_lower in ['nifty smallcap 100', 'niftysmallcap100']:
+            # Angel's scrip master spells it "NIFTY SMLCAP 100" (token 99926032); the
+            # lookup failed every run, silently disabling the smallcap inputs to
+            # market_regime and emfb._check_index_regime.
+            symbol = 'NIFTY SMLCAP 100'
 
         lookup_key = self._normalize_symbol_key(symbol)
         
@@ -623,9 +628,29 @@ class DataBroker:
         # same reason; this just brings this call in line with that pattern.
         to_date = end_date or datetime.now(config.MARKET_TZ)
 
+        # Delete-before-refetch destroyed good data whenever the refetch then
+        # failed: on 2026-10-07 AB1021 killed every attempt for ~25 symbols and
+        # they had no daily file at all until EOD rebuilt them. The old file is
+        # moved aside instead and only discarded once the new one is saved.
+        prev_path = file_path + ".prev"
+        moved_aside = False
+
+        def _restore_and_serve() -> pd.DataFrame:
+            if moved_aside and os.path.exists(prev_path) and not os.path.exists(file_path):
+                try:
+                    os.replace(prev_path, file_path)
+                    logger.error(f"Force refresh failed for {symbol}; restored the previous cache and serving it as stale.")
+                    return _flag_if_stale(pd.read_parquet(file_path), interval, symbol)
+                except Exception as e:
+                    logger.warning(f"Could not restore previous cache for {symbol}: {e}")
+            return pd.DataFrame()
+
         if force_refresh and os.path.exists(file_path):
-            logger.info(f"Force refresh requested for {symbol}. Deleting existing cache file.")
-            os.remove(file_path)
+            logger.info(f"Force refresh requested for {symbol}. Moving the existing cache aside until the refetch is saved.")
+            os.replace(file_path, prev_path)
+            moved_aside = True
+        elif not os.path.exists(file_path) and os.path.exists(prev_path):
+            os.replace(prev_path, file_path)  # recover a file orphaned by a crash mid-refresh
 
         # 1. Cache validation logic
         if interval == 'ONE_DAY':
@@ -859,7 +884,7 @@ class DataBroker:
 
         if token_row is None:
             logger.warning(f"Symbol lookup failed for full refresh on '{symbol}'.")
-            return pd.DataFrame()
+            return _restore_and_serve()
 
         res = None
         for attempt in range(4):
@@ -887,7 +912,7 @@ class DataBroker:
                     profiler.log_cooldown()
                     time.sleep(sleep_time)
                     continue
-                return pd.DataFrame()
+                return _restore_and_serve()
 
         # FIX: Ensure the response is a dictionary before accessing keys.
         if isinstance(res, dict) and res.get('status') and res.get('data'):
@@ -895,6 +920,11 @@ class DataBroker:
             df['Timestamp'] = pd.to_datetime(df['Timestamp'])
             df[['Open', 'High', 'Low', 'Close', 'Volume']] = df[['Open', 'High', 'Low', 'Close', 'Volume']].apply(pd.to_numeric)
             df.to_parquet(file_path, compression='snappy')
+            if moved_aside and os.path.exists(prev_path):
+                try:
+                    os.remove(prev_path)
+                except OSError:
+                    pass
             profiler.log_cache_event('save')
             logger.info(f"Saved {len(df)} candles to cache for {symbol}.")
             # For full refresh, mimic the final output format
@@ -902,7 +932,7 @@ class DataBroker:
                  print(f"\n[Cache] Loaded 0, Downloaded {len(df)}, Saved {len(df)}")
             return _flag_if_stale(df, interval, symbol)
 
-        return pd.DataFrame()
+        return _restore_and_serve()
 
     def fetch_daily_candles(self, symbol: str, days_back: int = 120) -> pd.DataFrame:
         """

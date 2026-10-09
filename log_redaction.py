@@ -76,6 +76,15 @@ def redact(text: str, literals: Optional[Iterable[str]] = None) -> str:
 
 def _redact_record(record: logging.LogRecord, literals) -> None:
     try:
+        # Format first, then redact the finished text: redacting msg and args
+        # separately stripped a "%s" that sat inside a quoted secret value and
+        # left the args unused, which broke the record's formatting.
+        record.msg = redact(record.getMessage(), literals)
+        record.args = None
+        return
+    except Exception:
+        pass  # malformed record (bad args); fall back to redacting the parts
+    try:
         if isinstance(record.msg, str):
             record.msg = redact(record.msg, literals)
         if record.args:
