@@ -291,6 +291,10 @@ def _print_btst_swing_bridge(t0: float) -> None:
             for strategy, group in df.groupby('strategy')
         ]
         df = pd.concat(annotated, ignore_index=True) if annotated else df
+        # The tier is still needed above to look up its real win rate (Tier_Win_Rate_Pct),
+        # but the High/Medium/Low word itself is inverted for SWING (High 38.7% vs Low 48.0%
+        # win, n=6,200), so don't print it.
+        df.loc[df['strategy'].str.upper() == 'SWING', 'Confidence'] = 'n/a*'
         df = _apply_tradability_flag(df, t0, symbol_col='symbol')
 
         print("\n" + "-" * 100)
@@ -299,6 +303,9 @@ def _print_btst_swing_bridge(t0: float) -> None:
         cols = [c for c in ['symbol', 'strategy', 'score', 'Confidence', 'Actionability',
                              'Tier_Win_Rate_Pct', 'Tradability_Flag', 'entry', 'stop', 'target', 'timestamp'] if c in df.columns]
         print(df[cols].to_string(index=False))
+        if (df['strategy'].str.upper() == 'SWING').any():
+            print("* SWING tier hidden: its High score tier has won less often than Low (38.7% vs 48.0%, "
+                  "n=6,200). Tier_Win_Rate_Pct shows the tier's real record.")
         print("-" * 100)
         _phase(f"BTST/SWING bridge: {len(df)} signal(s) from today's persisted EOD run.", t0)
     except Exception as e:

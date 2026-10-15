@@ -593,7 +593,11 @@ def print_decision_brief(brief: dict, top_n: int = 10) -> None:
     common = ['Symbol', 'EMFB_Score', 'Engine_Score', 'Confidence', 'Move_Stage', 'Grind_Flag',
               'Reliability_Flag', 'Win_Rate', 'Trigger', 'Stop', 'Target', 'Trigger_Check', 'Tradability_Flag']
     _section("BTST CANDIDATES", brief['btst'], common, meta['dropped'].get('btst', {}))
-    _section("SWING CANDIDATES", brief['swing'], common, meta['dropped'].get('swing', {}))
+    # No Confidence on SWING: on 6,200 resolved SWING trades (2026-05..10) the High tier
+    # won 38.7% vs Low 48.0%, inverted in both halves, and the EMFB confidence carried
+    # onto SWING rows was no better (High worst, small n). Reliability/Win_Rate stay.
+    swing_cols = [c for c in common if c != 'Confidence']
+    _section("SWING CANDIDATES", brief['swing'], swing_cols, meta['dropped'].get('swing', {}))
     grind_cols = ['Symbol', 'EMFB_Score', 'Move_Stage', 'Grind_Flag', 'Ret20d_Pct',
                   'Reliability_Flag', 'Win_Rate', 'Trigger', 'Stop', 'Target', 'Trigger_Check', 'Tradability_Flag']
     _section("GRIND CANDIDATES", brief['grind'], grind_cols, meta['dropped'].get('grind', {}))
@@ -620,6 +624,8 @@ def print_decision_brief(brief: dict, top_n: int = 10) -> None:
           "PRICE_SUSPECT rows whose trigger disagrees with the cached close by "
           f">{MAX_TRIGGER_DEVIATION_PCT:.0f}%.")
     print("UNVERIFIED trigger = cache too stale to check, not a bad price - verify manually.")
+    print("SWING shows no Confidence tier: its High tier has historically won LESS often than Low "
+          "(38.7% vs 48.0%, n=6,200). Use Reliability_Flag/Win_Rate (per-stock record) instead.")
     print("Tradability: NO_BTST = trade-for-trade (BE) / ASM Stage III+ / GSM - dropped from BTST, "
           "flagged elsewhere; CAUTION = ASM Stage I-II (higher margin); UNKNOWN = could not be checked.")
     print("=" * 108)
