@@ -39,11 +39,15 @@ function Wait-ForLock {
     }
 }
 
+# No --force-refresh (2026-10-15): it re-downloaded every symbol's 400-day history
+# and 300-400 of those fetches failed daily under AB1021. The discovery cache is
+# already invalid on a new trading day, so it is rebuilt anyway, and the daily
+# data is topped up incrementally.
 Wait-ForLock
-& $python main.py discover BTST --force-refresh *>&1 | Out-File -FilePath $logFile -Append -Encoding utf8
+& $python main.py discover BTST *>&1 | Out-File -FilePath $logFile -Append -Encoding utf8
 
 Wait-ForLock
-& $python main.py discover SWING --force-refresh *>&1 | Out-File -FilePath $logFile -Append -Encoding utf8
+& $python main.py discover SWING *>&1 | Out-File -FilePath $logFile -Append -Encoding utf8
 
 Wait-ForLock
 & $python main.py emfb *>&1 | Out-File -FilePath $logFile -Append -Encoding utf8
