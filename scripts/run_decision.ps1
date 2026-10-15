@@ -32,6 +32,10 @@ Wait-ForLock
 Log "momentum --force-refresh"
 & $python main.py momentum --force-refresh *>&1 | Out-File -FilePath $logFile -Append -Encoding utf8
 Wait-ForLock -MaxWaitSeconds 120 -PollSeconds 3
+# Real BTST/SWING engine picks for the brief (not saved to signals.db; EOD saves the
+# settled run). The script itself refuses to start after 15:11.
+Log "engine snapshot"
+& $python engine_snapshot.py *>&1 | Out-File -FilePath $logFile -Append -Encoding utf8
 Log "brief"
 & $python main.py brief *>&1 | Out-File -FilePath $briefFile -Encoding utf8
 Log "=== Decision run finished (brief: $briefFile) ==="

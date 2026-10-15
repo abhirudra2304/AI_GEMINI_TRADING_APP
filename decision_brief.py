@@ -139,6 +139,25 @@ def _load_todays_signal_db_rows(strategy: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def _load_todays_engine_snapshot(strategy: str):
+    """Today's latest engine_snapshot.py output for `strategy` (the real BTST/SWING
+    engine run at decision time, not persisted to signals.db). Returns (rows, HH:MM);
+    rows is empty when no snapshot exists for today."""
+    import glob
+    today = datetime.now(config.MARKET_TZ).strftime('%Y%m%d')
+    paths = sorted(glob.glob(f"engine_snapshot_{today}_*.csv"))
+    if not paths:
+        return pd.DataFrame(), None
+    try:
+        df = pd.read_csv(paths[-1])
+    except Exception as e:
+        logger.warning(f"engine snapshot read failed ({paths[-1]}): {e}")
+        return pd.DataFrame(), None
+    stamp = paths[-1].rsplit('_', 1)[-1][:4]
+    rows = df[df['strategy'] == strategy].drop(columns=['strategy'])
+    return rows.sort_values('Engine_Score', ascending=False).reset_index(drop=True), f"{stamp[:2]}:{stamp[2:]}"
+
+
 def _latest_cached_closes() -> pd.DataFrame:
     """Symbol -> (latest cached daily close, that bar's date). Reuses
     grind_scanner's own cache-path resolution so this agrees with the stage
@@ -416,6 +435,12 @@ def build_decision_brief() -> dict:
         db_rows = _load_todays_signal_db_rows(strategy)
         if not db_rows.empty:
             meta[f'{strategy.lower()}_source'] = f'signals.db ({strategy} engine)'
+        else:
+            db_rows, stamp = _load_todays_engine_snapshot(strategy)
+            if stamp is not None:
+                meta[f'{strategy.lower()}_source'] = (
+                    f'engine snapshot {stamp} ({strategy} engine, pre-close; EOD saves the settled run)')
+        if not db_rows.empty:
             # Carry the momentum report's context onto the engine's rows so this
             # path is not less informative than the fallback (the first version's
             # flaw - the "preferred" path dropped stage/confidence entirely).
