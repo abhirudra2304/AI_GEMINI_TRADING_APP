@@ -3,6 +3,7 @@
 # this should finish in ~1-2 minutes instead of ~19, leaving real margin
 # before the 15:30 close. main.py's run_eod() itself saves a PDF report and
 # fires a Windows notification when done - nothing else here needs to.
+param([switch]$CheckOnly)   # -CheckOnly: log what would be rebuilt, run nothing
 $ErrorActionPreference = "Continue"
 Set-Location "C:\AI_GEMINI_TRADING_APP"
 
@@ -36,6 +37,32 @@ function Wait-ForLock {
         "  WARNING: lock still held after ${MaxWaitSeconds}s wait - proceeding anyway, step below may no-op." | Out-File -FilePath $logFile -Append -Encoding utf8
     }
 }
+
+# 2026-10-16: the PC slept through Prewarm (13:15), so BTST/SWING discovery caches were
+# still yesterday's; the engine rejects them ("wrong trading day") and EOD silently skipped
+# both strategies - no BTST/SWING signals were saved for the day. Rebuild any discovery
+# cache that is missing, from another day, or older than the engine's 2h30 TTL (with margin)
+# before the scan. EOD has no hard deadline, so the ~20 minutes this can cost is fine.
+function Test-DiscoveryStale {
+    param([string]$Path, [int]$MaxAgeMinutes = 135)
+    if (-not (Test-Path $Path)) { return $true }
+    $f = Get-Item $Path
+    if ($f.LastWriteTime.Date -ne (Get-Date).Date) { return $true }
+    return ((Get-Date) - $f.LastWriteTime).TotalMinutes -gt $MaxAgeMinutes
+}
+
+foreach ($s in @("BTST", "SWING")) {
+    $cache = Join-Path "C:\AI_GEMINI_TRADING_APP" "discovery_cache_$($s.ToLower()).pkl"
+    if (Test-DiscoveryStale $cache) {
+        "  $s discovery cache is stale or missing - rebuilding before the scan" | Out-File -FilePath $logFile -Append -Encoding utf8
+        if ($CheckOnly) { continue }
+        Wait-ForLock
+        & $python main.py discover $s *>&1 | Out-File -FilePath $logFile -Append -Encoding utf8
+    } else {
+        "  $s discovery cache is fresh" | Out-File -FilePath $logFile -Append -Encoding utf8
+    }
+}
+if ($CheckOnly) { exit 0 }
 
 Wait-ForLock
 & $python main.py eod *>&1 | Out-File -FilePath $logFile -Append -Encoding utf8
