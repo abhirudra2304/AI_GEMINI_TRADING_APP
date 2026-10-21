@@ -92,3 +92,5 @@ _diagnostic_scans/
 # --- Database backups ---
 *.pre-cleanup-backup
 tradability_cache.json
+
+nse_holidays.json

@@ -18,6 +18,14 @@ $lockFile = "C:\AI_GEMINI_TRADING_APP\main.pid"
 
 "=== Prewarm run started $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ===" | Out-File -FilePath $logFile -Append -Encoding utf8
 
+# NSE holiday gate (market_calendar.py, exit 3 = closed). The schedule only knows Mon-Fri:
+# on 2026-10-20 (Dussehra) every task ran in full on the previous day's data.
+& $python market_calendar.py *>&1 | Out-File -FilePath $logFile -Append -Encoding utf8
+if ($LASTEXITCODE -eq 3) {
+    "=== NSE closed today - skipping ===" | Out-File -FilePath $logFile -Append -Encoding utf8
+    exit 0
+}
+
 # 2026-08-21: previously each step below hit main.py's single-instance lock,
 # saw "Another instance is already running", and exited immediately - if a
 # manual scan happened to still be running at 14:25, ALL FOUR steps silently

@@ -28,6 +28,14 @@ function Wait-ForLock {
 }
 
 Log "=== Decision run started ==="
+
+# NSE holiday gate (market_calendar.py, exit 3 = closed). The schedule only knows Mon-Fri:
+# on 2026-10-20 (Dussehra) every task ran in full on the previous day's data.
+& $python market_calendar.py *>&1 | Out-File -FilePath $logFile -Append -Encoding utf8
+if ($LASTEXITCODE -eq 3) {
+    "=== NSE closed today - skipping ===" | Out-File -FilePath $logFile -Append -Encoding utf8
+    exit 0
+}
 Wait-ForLock
 Log "momentum --force-refresh"
 & $python main.py momentum --force-refresh *>&1 | Out-File -FilePath $logFile -Append -Encoding utf8

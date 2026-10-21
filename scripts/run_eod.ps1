@@ -15,6 +15,14 @@ $lockFile = "C:\AI_GEMINI_TRADING_APP\main.pid"
 
 "=== EOD run started $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ===" | Out-File -FilePath $logFile -Append -Encoding utf8
 
+# NSE holiday gate (market_calendar.py, exit 3 = closed). The schedule only knows Mon-Fri:
+# on 2026-10-20 (Dussehra) every task ran in full on the previous day's data.
+& $python market_calendar.py *>&1 | Out-File -FilePath $logFile -Append -Encoding utf8
+if ($LASTEXITCODE -eq 3) {
+    "=== NSE closed today - skipping ===" | Out-File -FilePath $logFile -Append -Encoding utf8
+    exit 0
+}
+
 # 2026-08-24: this used to hit main.py's single-instance lock and exit
 # immediately if anything else held it at 15:15 - discovered when a live
 # scanner test session (main.py live, fixed/validated earlier the same day)
