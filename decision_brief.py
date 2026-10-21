@@ -278,7 +278,13 @@ def _enrich(df: pd.DataFrame, stage: pd.DataFrame, reliability: Optional[pd.Data
 
     out = _check_triggers(out, closes)
     from tradability import annotate_tradability
-    return annotate_tradability(out, tradability)
+    out = annotate_tradability(out, tradability)
+    try:
+        from liquidity import annotate_liquidity, load_liquidity
+        return annotate_liquidity(out, load_liquidity())
+    except Exception:  # informational only - never block the brief
+        out['Liq_Flag'] = 'UNKNOWN'
+        return out
 
 
 def _check_triggers(df: pd.DataFrame, closes: pd.DataFrame) -> pd.DataFrame:
@@ -591,7 +597,7 @@ def print_decision_brief(brief: dict, top_n: int = 10) -> None:
                   f"the header count above is the real total.")
 
     common = ['Symbol', 'EMFB_Score', 'Engine_Score', 'Confidence', 'Move_Stage', 'Grind_Flag',
-              'Reliability_Flag', 'Win_Rate', 'Trigger', 'Stop', 'Target', 'Trigger_Check', 'Tradability_Flag']
+              'Reliability_Flag', 'Win_Rate', 'Trigger', 'Stop', 'Target', 'Trigger_Check', 'Tradability_Flag', 'Liq_Flag']
     _section("BTST CANDIDATES", brief['btst'], common, meta['dropped'].get('btst', {}))
     # No Confidence on SWING: on 6,200 resolved SWING trades (2026-05..10) the High tier
     # won 38.7% vs Low 48.0%, inverted in both halves, and the EMFB confidence carried
@@ -599,7 +605,7 @@ def print_decision_brief(brief: dict, top_n: int = 10) -> None:
     swing_cols = [c for c in common if c != 'Confidence']
     _section("SWING CANDIDATES", brief['swing'], swing_cols, meta['dropped'].get('swing', {}))
     grind_cols = ['Symbol', 'EMFB_Score', 'Move_Stage', 'Grind_Flag', 'Ret20d_Pct',
-                  'Reliability_Flag', 'Win_Rate', 'Trigger', 'Stop', 'Target', 'Trigger_Check', 'Tradability_Flag']
+                  'Reliability_Flag', 'Win_Rate', 'Trigger', 'Stop', 'Target', 'Trigger_Check', 'Tradability_Flag', 'Liq_Flag']
     _section("GRIND CANDIDATES", brief['grind'], grind_cols, meta['dropped'].get('grind', {}))
 
     nv = brief.get('needs_verification', pd.DataFrame())
@@ -626,6 +632,8 @@ def print_decision_brief(brief: dict, top_n: int = 10) -> None:
     print("UNVERIFIED trigger = cache too stale to check, not a bad price - verify manually.")
     print("SWING shows no Confidence tier: its High tier has historically won LESS often than Low "
           "(38.7% vs 48.0%, n=6,200). Use Reliability_Flag/Win_Rate (per-stock record) instead.")
+    print("Liq_Flag: median NSE traded value, last 20 sessions - OK >=50 cr/day (~0.25% round-trip cost), MODERATE 10-50 (~0.4%), "
+          "THIN 2-10 (~0.8%), ILLIQUID <2 (~1.5%). Cost figures are planning assumptions; informational, never filters.")
     print("Tradability: NO_BTST = trade-for-trade (BE) / ASM Stage III+ / GSM - dropped from BTST, "
           "flagged elsewhere; CAUTION = ASM Stage I-II (higher margin); UNKNOWN = could not be checked.")
     print("=" * 108)
