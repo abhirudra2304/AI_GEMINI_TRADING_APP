@@ -94,3 +94,4 @@ _diagnostic_scans/
 tradability_cache.json
 
 nse_holidays.json
+results_filings_cache.json
