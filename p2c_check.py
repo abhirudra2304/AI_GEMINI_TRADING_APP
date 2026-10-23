@@ -16,7 +16,9 @@ Checks (each PASS / FAIL / n/a):
  5 RSI       RSI(14) between 35 and 55 (cooled, not broken)
  6 CANDLE    last daily bar is a hammer or bullish engulfing
  7 MSS       15-min: after the 2-day low, a close above the last swing high before it
-ADD-READY = 1-5 all PASS and (6 or 7 PASS). TREND FAIL means do not average down.
+ 8 RESULTS   no results reaction <= -5% vs the universe within 60 sessions (event study
+             2021-26: such stocks lag a further -2.25% over 60 sessions, every year)
+ADD-READY = 1-5 and 8 all PASS and (6 or 7 PASS). TREND FAIL or RESULTS FAIL means do not average down.
 """
 import os
 import sys
@@ -63,7 +65,7 @@ def _mss(m15):
     return bool((after["Close"] > before["High"].max()).any())
 
 
-def check(sym):
+def check(sym, rr=None):
     d, mt = _load(sym, "ONE_DAY_400")
     if d is None or len(d) < 220:
         return {"Symbol": sym, "Verdict": "NO DATA"}
@@ -71,7 +73,7 @@ def check(sym):
     c, h, l, o, v = d["Close"], d["High"], d["Low"], d["Open"], d["Volume"]
     px = c.iloc[-1]
     sma = {n: c.rolling(n).mean() for n in (20, 50, 100, 200)}
-    r = {"Symbol": sym, "Close": round(px, 2), "Bar": d.index[-1].strftime("%m-%d"),
+    r = {"Symbol": sym, "Close": round(px, 2), "Bar": d.index[-1].strftime("%m-%d"), "_bar": d.index[-1].date(),
          "Settled": mt.hour * 60 + mt.minute >= 15 * 60 + 35 or mt.date() > d.index[-1].date()}
 
     r["TREND"] = px > sma[200].iloc[-1] and sma[200].iloc[-1] > sma[200].iloc[-21]
@@ -112,10 +114,19 @@ def check(sym):
     r["CANDLE"] = bool(hammer or engulf)
     r["MSS"] = _mss(m15)
 
-    core = all(r[k] for k in ("TREND", "DEPTH", "ZONE", "VOLUME", "RSI_OK"))
+    if rr is not None and sym in rr.index:
+        r["Results"] = rr.loc[sym, "Results"]
+        r["RESULTS"] = not bool(rr.loc[sym, "Bad60"])
+        left = 60 - rr.loc[sym, "Age"] if bool(rr.loc[sym, "Bad60"]) else 0
+    else:
+        r["Results"], r["RESULTS"], left = "n/a", None, 0
+
+    core = all(r[k] for k in ("TREND", "DEPTH", "ZONE", "VOLUME", "RSI_OK")) and r["RESULTS"] is not False
     trigger = r["CANDLE"] or bool(r["MSS"])
     if not r["TREND"]:
         r["Verdict"] = "NO - trend broken"
+    elif r["RESULTS"] is False:
+        r["Verdict"] = f"NO - bad results, avoid ~{int(left)} more sessions"
     elif core and trigger:
         r["Verdict"] = "ADD-READY"
     elif core:
@@ -125,23 +136,43 @@ def check(sym):
     return r
 
 
+def _results(symbols):
+    """Results reactions from medium_rank (NSE bhavcopy + announcements feed, cached).
+    Returns None if unavailable - RESULTS then shows n/a and never blocks the checklist."""
+    try:
+        import strategy_paper as sp
+        from medium_rank import results_reactions
+        return results_reactions(sp.load(), symbols)
+    except Exception as e:
+        print(f"(results check unavailable: {e})")
+        return None
+
+
 def main(symbols):
-    rows = [check(s) for s in symbols]
+    rr = _results(symbols)
+    rows = [check(s, rr) for s in symbols]
     df = pd.DataFrame(rows)
     fmt = lambda x: "PASS" if x is True else ("FAIL" if x is False else ("n/a" if x is None else x))
-    for k in ("TREND", "DEPTH", "ZONE", "VOLUME", "RSI_OK", "CANDLE", "MSS"):
+    for k in ("TREND", "DEPTH", "ZONE", "VOLUME", "RSI_OK", "CANDLE", "MSS", "RESULTS"):
         if k in df.columns:
             df[k] = df[k].map(fmt)
     cols = ["Symbol", "Bar", "Close", "Off_Hi%", "Retr%", "RSI", "Vol5/50", "TREND", "DEPTH", "ZONE",
-            "VOLUME", "RSI_OK", "CANDLE", "MSS", "Verdict"]
+            "VOLUME", "RSI_OK", "CANDLE", "MSS", "RESULTS", "Verdict"]
     pd.set_option("display.width", 250)
     print(df[[c for c in cols if c in df.columns]].to_string(index=False))
     print("\nSupports within 2.5%:")
     for _, r in df.iterrows():
-        print(f"  {r['Symbol']:<11} {r.get('Supports', '-')}")
+        print(f"  {r['Symbol']:<11} {r.get('Supports', '-'):<28} last results: {r.get('Results', 'n/a')}")
     if "Settled" in df.columns and not df["Settled"].fillna(True).all():
         print("\nWARNING: some daily bars were cached before 15:35 - last close may be provisional:",
               ", ".join(df.loc[~df["Settled"].fillna(True), "Symbol"]))
+    # Only the 222 TARGET_UNIVERSE names are refreshed daily; others (e.g. SECTOR_MAP-only
+    # ADANIPORTS) keep whatever bar they were last fetched with.
+    if "_bar" in df.columns and df["_bar"].notna().any():
+        stale = df[df["_bar"].notna() & (df["_bar"] < df["_bar"].max())]
+        if len(stale):
+            print("\nWARNING: stale daily cache (not refreshed by the scans) - verdict is on old data:",
+                  ", ".join(f"{s} (last bar {b})" for s, b in zip(stale.Symbol, stale._bar)))
     print("\nChecklist for adding to long-term holdings - not a trade signal (pullback rules showed no edge in testing).")
 
 

@@ -80,6 +80,44 @@ def _tradability():
         return pd.Series(dtype=str)
 
 
+def results_reactions(data, symbols, U=None):
+    """Latest results filing per symbol and the 2-day return vs the equal-weight point-in-time
+    universe around it. Returns a frame indexed by Symbol: Results (text), Tag, Age (sessions
+    since the reaction day), Bad60 (BAD within 60 sessions), Beat25 (BEAT within 25)."""
+    CA, C, TO = data["CA"], data["C"], data["TO"]
+    if U is None:
+        U = sp.signals(data)[0]
+    R = CA.pct_change(fill_method=None)
+    R = R.where(R.abs() <= 0.35)
+    bench = R.where(U.shift(1, fill_value=False)).mean(axis=1).fillna(0)
+    AR = R.sub(bench, axis=0)
+    vol = TO / C  # shares traded (turnover is in lakhs; only the ratio is used)
+    vmed = vol.rolling(50, min_periods=30).median().shift(1)
+    out = pd.DataFrame({"Results": "-", "Tag": "", "Age": np.nan, "Bad60": False, "Beat25": False},
+                       index=pd.Index(symbols, name="Symbol"))
+    dates = CA.index
+    for _, r in _results_filings().iterrows():
+        s = r.symbol
+        if s not in out.index or s not in AR.columns:
+            continue
+        after = r.ts.hour * 60 + r.ts.minute >= 15 * 60 + 30
+        i = dates.searchsorted(r.ts.normalize(), side="right" if after else "left")
+        if i + 1 >= len(dates):
+            out.loc[s, ["Results", "Tag"]] = [f"{r.ts:%m-%d} pending", "PENDING"]
+            continue
+        ear = (1 + AR[s].iloc[i]) * (1 + AR[s].iloc[i + 1]) - 1
+        if np.isnan(ear):
+            continue
+        vr = vol[s].iloc[i] / vmed[s].iloc[i]
+        tag = "BEAT" if ear >= 0.05 and vr >= 2 else ("BAD" if ear <= -0.05 else "flat")
+        age = len(dates) - 1 - i
+        out.loc[s, ["Results", "Tag", "Age", "Bad60", "Beat25"]] = [
+            f"{r.ts:%m-%d} {tag} {ear * 100:+.0f}%", tag, age, tag == "BAD" and age <= 60, tag == "BEAT" and age <= 25]
+    out["Bad60"] = out["Bad60"].astype(bool)
+    out["Beat25"] = out["Beat25"].astype(bool)
+    return out
+
+
 def build(data=None):
     data = data or sp.load()
     CA, C, TO = data["CA"], data["C"], data["TO"]
@@ -97,33 +135,9 @@ def build(data=None):
     df["Off52wH%"] = ((CA.loc[d, uni] / CA.iloc[-252:][uni].max() - 1) * 100).round(1)
     df["Ret1m%"] = ((CA.loc[d, uni] / CA.iloc[-22][uni] - 1) * 100).round(1)
 
-    # results reaction: 2-day return vs the equal-weight point-in-time universe
-    R = CA.pct_change(fill_method=None)
-    R = R.where(R.abs() <= 0.35)
-    bench = R.where(U.shift(1, fill_value=False)).mean(axis=1).fillna(0)
-    AR = R.sub(bench, axis=0)
-    vol = TO / C  # shares traded (turnover is in lakhs; only the ratio is used)
-    vmed = vol.rolling(50, min_periods=30).median().shift(1)
-    df["Results"], bad, beat = "-", pd.Series(False, index=df.index), pd.Series(False, index=df.index)
-    dates = CA.index
-    for _, r in _results_filings().iterrows():
-        s = r.symbol
-        if s not in df.index:
-            continue
-        after = r.ts.hour * 60 + r.ts.minute >= 15 * 60 + 30
-        i = dates.searchsorted(r.ts.normalize(), side="right" if after else "left")
-        if i + 1 >= len(dates):
-            df.loc[s, "Results"] = f"{r.ts:%m-%d} pending"
-            continue
-        ear = (1 + AR[s].iloc[i]) * (1 + AR[s].iloc[i + 1]) - 1
-        if np.isnan(ear):
-            continue
-        vr = vol[s].iloc[i] / vmed[s].iloc[i]
-        tag = "BEAT" if ear >= 0.05 and vr >= 2 else ("BAD" if ear <= -0.05 else "flat")
-        df.loc[s, "Results"] = f"{r.ts:%m-%d} {tag} {ear * 100:+.0f}%"
-        age = len(dates) - 1 - i
-        bad[s] = tag == "BAD" and age <= 60
-        beat[s] = tag == "BEAT" and age <= 25
+    rr = results_reactions(data, uni, U)
+    df["Results"] = rr["Results"]
+    bad, beat = rr["Bad60"], rr["Beat25"]
 
     df["Liq"] = load_liquidity().set_index("Symbol")["Liq_Flag"].reindex(df.index).fillna("UNKNOWN")
     df["Trad"] = _tradability().reindex(df.index).fillna("UNKNOWN")
