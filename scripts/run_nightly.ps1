@@ -14,7 +14,7 @@ $python = "C:\AI_GEMINI_TRADING_APP\.venv\Scripts\python.exe"
 function Log($msg) { "$(Get-Date -Format 'HH:mm:ss') $msg" | Out-File -FilePath $logFile -Append -Encoding utf8 }
 
 Log "=== Nightly run started ==="
-foreach ($step in @("strategy_paper.py update", "apply_official_closes.py", "score_new_outcomes.py")) {
+foreach ($step in @("strategy_paper.py update", "apply_official_closes.py", "score_new_outcomes.py", "fii_dii_log.py")) {
     Log "-> $step"
     $parts = $step.Split(" ")
     & $python @parts *>&1 | Out-File -FilePath $logFile -Append -Encoding utf8
