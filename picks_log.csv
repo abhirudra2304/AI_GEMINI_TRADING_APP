@@ -68,3 +68,6 @@ Flag_Date,Symbol,Trigger,Stop,Target,Source,Note
 2026-10-16,PERSISTENT,5840.0,5492.0,6710.0,brief-SWING,#1
 2026-10-16,TEJASNET,468.25,440.55,537.49,brief-SWING,#2(STRONG)
 2026-10-16,PARAS,1261.1,1188.5,1442.61,brief-SWING,#4(STRONG)
+2026-11-04,PWL,127.41,118.73,144.77,p2c-universe-scan,"ADD-READY (candle fail); stop 1.5ATR, target 3ATR; paper track only"
+2026-11-04,ACE,1104.75,1033.69,1246.86,p2c-universe-scan,"ADD-READY (candle fail); stop 1.5ATR, target 3ATR; paper track only"
+2026-11-04,OFSS,10194.0,9705.11,11171.79,p2c-universe-scan,"ADD-READY (candle fail); stop 1.5ATR, target 3ATR; paper track only"
