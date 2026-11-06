@@ -89,6 +89,10 @@ class Universe:
     # Added 2026-11-05 at the user's request: broker target raises (Macquarie, Motilal, Jefferies),
     # medium_rank tier A at 52w high (ADANIPORTS); revenue/PAT +43%/+69%, D/E 0.48 (MINDACORP).
     "ADANIPORTS", "MINDACORP",
+    # Added 2026-11-06 at the user's request: week-of-rotation leaders missing from the universe
+    # (FII Rs 32k cr net 02-05 Nov into large-cap financials; RELIANCE +13.3%, SHRIRAMFIN +16.8%,
+    # MUTHOOTFIN +19.1% vs Nifty +8.6% for 30-Oct to 06-Nov). RELIANCE re-added (removed 2026-08-28).
+    "RELIANCE", "SHRIRAMFIN", "MUTHOOTFIN",
 ]
 
     # Institutional Sector Mappings
@@ -156,7 +160,7 @@ class Universe:
         'OLECTRA': 'AUTO', 'JBMA': 'AUTO_ANC', 'TARIL': 'CAPITAL_GOODS', 'VOLTAMP': 'CAPITAL_GOODS',
         'KALYANKJIL': 'RETAIL', 'AZAD': 'DEFENCE', 'DCXINDIA': 'DEFENCE',
         '360ONE': 'FINANCE', 'MOTILALOFS': 'FINANCE', 'POLICYBZR': 'FINANCE',
-        'ADANIPORTS': 'INFRA', 'MINDACORP': 'AUTO_ANC', 'E2E': 'IT', 'RIR': 'CAPITAL_GOODS',
+        'ADANIPORTS': 'INFRA', 'MINDACORP': 'AUTO_ANC', 'SHRIRAMFIN': 'FINANCE', 'MUTHOOTFIN': 'FINANCE', 'E2E': 'IT', 'RIR': 'CAPITAL_GOODS',
         'AFFLE': 'IT', 'RATEGAIN': 'IT', 'AVALON': 'ELECTRONICS',
         # --- Recent IPOs (added 2026-09-25) ---
         'MEESHO': 'RETAIL', 'LENSKART': 'RETAIL', 'LGEINDIA': 'CONSUMER',
