@@ -108,7 +108,8 @@ def _deals(day, universe):
     d["Date"] = pd.to_datetime(d["Date"].astype(str).str.strip(), format="%d-%b-%Y", errors="coerce")
     d = d[d["Date"].dt.date == day]
     d["Symbol"] = d["Symbol"].astype(str).str.strip()
-    d = d[d.Symbol.isin(universe)]
+    if universe is not None:
+        d = d[d.Symbol.isin(universe)]
     d["qty"] = pd.to_numeric(d["Quantity Traded"].astype(str).str.replace(",", ""), errors="coerce")
     d["px"] = pd.to_numeric(d["Trade Price / Wght. Avg. Price"].astype(str).str.replace(",", ""), errors="coerce")
     d["sg"] = np.where(d["Buy/Sell"].astype(str).str.upper().str.startswith("B"), 1, -1)
@@ -125,6 +126,22 @@ def _deals(day, universe):
 
 def kind_of(g):
     return "/".join(sorted(g["kind"].unique()))
+
+
+def export_ideas(days=180, path=os.path.join(OUT, "btst_swing_ideas.csv")):
+    """One file, rewritten nightly: every BTST/SWING signal of the last `days` days with its scored
+    outcome (WIN / LOSS / TIME_STOP / pending) and net return - 'which stocks moved how'."""
+    import sqlite3
+    c = sqlite3.connect("signals.db")
+    q = ("select s.id, s.timestamp as signal_time, s.strategy, s.symbol, coalesce(s.EMFB_Score, s.score) as score, s.Confidence, "
+         "s.entry, s.stop, s.target, o.outcome, o.exit_reason, o.exit_price, o.exit_time, o.holding_days, "
+         "o.adj_return_pct as net_return_pct from signals s left join outcomes o on o.signal_id = s.id "
+         "where s.strategy in ('BTST','SWING') and s.timestamp >= ?")
+    since = (pd.Timestamp.today() - pd.Timedelta(days=days)).strftime("%Y-%m-%d")
+    df = pd.read_sql(q, c, params=(since,))
+    df["outcome"] = df["outcome"].fillna("PENDING")
+    df.sort_values("signal_time", ascending=False).to_csv(path, index=False)
+    return len(df)
 
 
 def main(force=False):
@@ -180,10 +197,43 @@ def main(force=False):
         hold_rows.append(r)
     n_hold = _append("holdings.csv", pd.DataFrame(hold_rows), day, force)
 
-    events += _deals(day, set(U) | set(HOLDINGS))
+    # ---- market-wide "smart money" (not bound to the universe): one-way institution-like deals and
+    # strong delivery accumulation among the 500 most-traded stocks
+    mine = set(U) | set(HOLDINGS) | set(WATCH)
+    deals = _deals(day, None)
+    events += [e for e in deals if e["symbol"] in set(HOLDINGS) | set(WATCH)]
+    sm = [dict(e) for e in deals]
+    to = X.pivot_table(index="D", columns="SYMBOL", values="TURNOVER_LACS")
+    med = to.median()
+    med = med[~med.index.str.contains(r"(?:BEES|ETF|IETF)$", regex=True)]   # no ETFs
+    top = med.nlargest(500).index
+    P = X.pivot_table(index="D", columns="SYMBOL", values="CLOSE_PRICE")[top]
+    DQ = X.pivot_table(index="D", columns="SYMBOL", values="DELIV_QTY")[top]
+    DPc = X.pivot_table(index="D", columns="SYMBOL", values="DELIV_PER")[top]
+    last = X.D.max()
+    if last in P.index and len(P) >= 25:
+        qx = DQ.loc[last] / DQ.iloc[-21:-1].mean()
+        dpt = DPc.loc[last] - DPc.iloc[-21:-1].mean()
+        prev = T.set_index("SYMBOL").PREV_CLOSE.reindex(top)
+        up = P.loc[last] > prev
+        above = P.loc[last] > P.tail(50).mean()
+        hit = (qx >= 2) & (dpt >= 10) & up & above
+        for s in hit[hit].index:
+            sm.append({"date": day, "symbol": s, "type": "MKT_DELIV_ACCUM", "price": float(P.loc[last, s]),
+                       "detail": f"delivery {DPc.loc[last, s]:.0f}% ({dpt[s]:+.0f} pts), {qx[s]:.1f}x qty, "
+                                 f"{100 * (P.loc[last, s] / prev[s] - 1):+.1f}%, turnover Rs {to.loc[last, s] / 100:.0f} cr"})
+    for e in sm:
+        e["in_universe"] = e["symbol"] in mine
+    n_sm = _append("smart_money.csv", pd.DataFrame(sm, columns=["date", "symbol", "type", "price", "detail", "in_universe"]),
+                   day, force) if sm else 0
+
     n_ev = _append("events.csv", pd.DataFrame(events, columns=["date", "symbol", "type", "price", "detail"]), day, force) \
         if events else 0
-    print(f"journal {day}: daily {n_daily}, holdings {n_hold}, events {n_ev}"
+    try:
+        n_ideas = export_ideas()
+    except Exception as e:
+        n_ideas = f"ERR {e}"
+    print(f"journal {day}: daily {n_daily}, holdings {n_hold}, events {n_ev}, smart-money {n_sm}, btst/swing ideas {n_ideas}"
           + (" (already journaled; --force to rewrite)" if not n_daily and not force else ""))
     for e in events:
         print(f"  {e['type']:22} {e['symbol']:11} {e['detail']}")

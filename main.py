@@ -191,6 +191,37 @@ def _combined_top_symbols(results: dict, top_n: int = 10) -> list:
     return list(dict.fromkeys(symbols))[:top_n]
 
 
+def _append_eod_ideas(results: dict, stale: bool = False, path: str = "journal/eod_ideas.csv") -> Optional[str]:
+    """Append this EOD run's BTST/SWING/EMFB picks to one CSV (one row per pick)."""
+    score_col = {"BTST": "BTST_Final_Score", "SWING": "Decision_Score", "EMFB": "EMFB_Score"}
+    keep = ["Symbol", "Sector", "Confidence", "Entry", "Trigger", "Stop", "Stop_Loss", "Target", "Reason"]
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+    frames = []
+    for strat, col in score_col.items():
+        df = results.get(strat)
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            continue
+        out = df[[c for c in keep if c in df.columns]].copy()
+        out.insert(0, "score", df[col] if col in df.columns else None)
+        out.insert(0, "rank", range(1, len(df) + 1))
+        out.insert(0, "strategy", strat)
+        out.insert(0, "run_time", ts)
+        out["stale_run"] = stale
+        frames.append(out)
+    if not frames:
+        return None
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        new = pd.concat(frames, ignore_index=True)
+        if os.path.exists(path):
+            new = pd.concat([pd.read_csv(path), new], ignore_index=True)
+        new.to_csv(path, index=False)
+        return path
+    except Exception as e:
+        print(f"⚠️ Could not append EOD ideas: {e}")
+        return None
+
+
 def _run_eod_news_enhancement(results: dict, base_pdf_filename: str) -> None:
     """
     Background-only companion to run_eod()'s fast PDF: fetches Gemini news for
@@ -316,28 +347,15 @@ def run_eod():
     # scheduled/background run with no one watching would lose the output the
     # moment the window closed. Save a PDF and pop a non-blocking notification
     # so results are checkable later regardless of whether anyone was present.
-    pdf_filename = f"eod_report_{datetime.now().strftime('%Y_%m_%d_%H%M')}.pdf"
-    pdf_saved = export_eod_pdf(results, pdf_filename)
-    if pdf_saved:
-        pdf_path = os.path.abspath(pdf_filename)
+    # 2026-11-06 (user's request): no more daily PDFs (two per day had piled up
+    # in the repo root). Every pick is appended to ONE file, journal/eod_ideas.csv,
+    # so "which stocks moved how" can be read straight from it; outcomes come
+    # from signals.db via journal.py -> journal/btst_swing_ideas.csv.
+    csv_path = _append_eod_ideas(results, stale=is_post_close)
+    if csv_path:
         notify_title = "EOD Scan Complete (POST-CLOSE - STALE)" if is_post_close else "EOD Scan Complete"
-        _notify_windows(notify_title, f"Report saved: {pdf_filename}")
-        print(f"📄 EOD report saved to {pdf_path}")
-
-        # eod mode has no should_wait/shutdown_event.wait() like btst/swing do,
-        # so a daemon thread here would otherwise get killed the instant this
-        # function returns and the process exits. Joining with a bounded
-        # timeout keeps the process alive just long enough for the slower news
-        # PDF to finish, WITHOUT delaying the fast PDF/notification above,
-        # which already happened - and without hanging indefinitely if Gemini
-        # is slow or down.
-        news_thread = threading.Thread(
-            target=_run_eod_news_enhancement, args=(results, pdf_filename),
-            name="EODNewsEnhancement", daemon=True,
-        )
-        news_thread.start()
-        shutdown_manager.register_worker(news_thread)
-        news_thread.join(timeout=60)
+        _notify_windows(notify_title, f"Ideas appended: {csv_path}")
+        print(f"📄 EOD ideas appended to {os.path.abspath(csv_path)}")
 
     profiler.save_report()
     profiler.print_report()
