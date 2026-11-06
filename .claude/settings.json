@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python .claude/hooks/block_blocking_scan_modes.py"
+            "command": "python C:/AI_GEMINI_TRADING_APP/.claude/hooks/block_blocking_scan_modes.py"
           }
         ]
       }

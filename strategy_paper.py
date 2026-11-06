@@ -35,6 +35,9 @@ MISSING = os.path.join(CACHE, "_missing.json")
 COST = 0.0025
 HOLD = 21
 LOOKBACK_FILES = 320  # enough for 252d momentum + 60d turnover rank
+# new/old price ratios for splits (1:2, 1:5, 1:10 ...), bonuses (1:1 -> 1/2, 1:2 -> 2/3,
+# 1:3 -> 3/4) and reverse splits
+SPLIT_RATIOS = (1/2, 1/3, 1/4, 1/5, 1/10, 1/20, 2/3, 3/4, 2, 3, 4, 5, 10)
 
 
 # ----------------------------------------------------------------- data
@@ -107,8 +110,18 @@ def load(n_files=LOOKBACK_FILES, since=None):
     X = X[~X.SYMBOL.isin(etf) & ~X.SYMBOL.str.contains(r"(?:BEES|ETF|IETF)$", regex=True)]
     P = lambda c: X.pivot_table(index="D", columns="SYMBOL", values=c)
     C, PC, TO, DP = P("CLOSE_PRICE"), P("PREV_CLOSE"), P("TURNOVER_LACS"), P("DELIV_PER")
-    ratio = PC / C.shift(1)
-    fct = ratio.where((ratio - 1).abs() > 0.02, 1.0).fillna(1.0)
+    # Split/bonus adjustment. NSE's sec_bhavdata_full does NOT adjust PREV_CLOSE on the
+    # ex-date (KOTAKBANK 2026-01-14: PREV_CLOSE 2132.6, CLOSE 421.0), so the old
+    # PREV_CLOSE-vs-prior-close test never caught a split, and it fired falsely across
+    # missing cache days. Instead, treat a close-to-close jump of >20% that sits within
+    # 3% of a standard split/bonus ratio as a corporate action.
+    ratio = C / C.shift(1)
+    lr = np.log(ratio)
+    is_ca = pd.DataFrame(False, index=ratio.index, columns=ratio.columns)
+    for k in SPLIT_RATIOS:
+        is_ca |= (lr - np.log(k)).abs() < 0.03
+    is_ca &= (ratio - 1).abs() > 0.2
+    fct = ratio.where(is_ca, 1.0).fillna(1.0)
     adj = fct.iloc[::-1].cumprod().iloc[::-1].shift(-1).fillna(1.0)
     return {"C": C, "CA": C * adj, "TO": TO, "DP": DP}
 
