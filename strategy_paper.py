@@ -121,7 +121,12 @@ def load(n_files=LOOKBACK_FILES, since=None):
     for k in SPLIT_RATIOS:
         is_ca |= (lr - np.log(k)).abs() < 0.03
     is_ca &= (ratio - 1).abs() > 0.2
-    fct = ratio.where(is_ca, 1.0).fillna(1.0)
+    # Older files (2020-25) DO carry NSE's ex-date PREV_CLOSE adjustment, which also covers
+    # odd ratios (demergers, rights). Use it when it is large (>20%), so the small PREV_CLOSE
+    # gaps left by missing cache days don't rescale history.
+    pc_ratio = PC / C.shift(1)
+    nse_adj = ((pc_ratio - 1).abs() > 0.2) & ~is_ca
+    fct = ratio.where(is_ca, pc_ratio.where(nse_adj, 1.0)).fillna(1.0)
     adj = fct.iloc[::-1].cumprod().iloc[::-1].shift(-1).fillna(1.0)
     return {"C": C, "CA": C * adj, "TO": TO, "DP": DP}
 
