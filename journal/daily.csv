@@ -1,0 +1,2 @@
+date,nifty,nifty_pct,n500,n500_pct,mid100,mid100_pct,small100,small100_pct,bank,bank_pct,it,it_pct,defence,defence_pct,vix,vix_pct,univ_adv,univ_dec,univ_pct_above_50dma,mkt_adv,mkt_dec,fii_net,dii_net,brief_time,engine_snapshot_ran,stale_served,brief_btst_n,brief_swing_n,brief_grind_n,brief_source
+2026-11-06,25030.35,2.01,23456.95,1.0,60606.65,-0.02,18975.05,-0.82,59086.0,2.27,32977.9,0.43,8929.4,-0.92,17.47,12.1,111,108,51.1,972,1735,13749.82,-5968.7,15:15:16,False,15,60,25,30,fitness-tag fallback (eod has not persis

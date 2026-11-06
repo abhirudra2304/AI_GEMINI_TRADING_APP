@@ -66,6 +66,26 @@ def supports(d):
     return {k: v for k, v in lv.items() if v <= last * 1.01}
 
 
+def evaluate(sym, d):
+    """Signal dict for the latest bar of `d` (used by journal.py; check() prints the same)."""
+    t, p = d.iloc[-1], d.iloc[-2]
+    c = d["close"]
+    rng = (t.close - t.low) / (t.high - t.low) if t.high > t.low else 0.5
+    volx = t.volume / d["volume"].iloc[-16:-1].mean()
+    sup = supports(d)
+    # a support TEST: previous close above the level, then dipped to it and held (2026-11-06:
+    # without the p.close condition a stock breaking UP through a level from below counted)
+    hit = [(k, v) for k, v in sup.items() if p.close > v and t.low <= v * 1.01 and t.close >= v * 0.995]
+    s100, s200 = c.tail(100).mean(), c.tail(200).mean()
+    base = bool(hit) and volx >= 1.0 and rng >= 0.35
+    strict = base and t.close > s100 and t.close > s200
+    early = base and t.close > p.close
+    below = sorted((v for v in sup.values() if v < t.close), reverse=True)
+    return {"date": d.index[-1].date(), "close": float(t.close), "signal": "STRICT" if strict else "EARLY" if early else "",
+            "touched": ";".join(f"{k} {v:.0f}" for k, v in hit), "rng": round(rng, 2), "volx": round(volx, 2),
+            "near_support_pct": round(100 * (below[0] / t.close - 1), 1) if below else None}
+
+
 def check(sym, live):
     d = daily(sym)
     if live:
@@ -75,7 +95,9 @@ def check(sym, live):
     rng = (t.close - t.low) / (t.high - t.low) if t.high > t.low else 0.5
     volx = t.volume / d["volume"].iloc[-16:-1].mean()
     sup = supports(d)
-    hit = [(k, v) for k, v in sup.items() if t.low <= v * 1.01 and t.close >= v * 0.995]
+    # a support TEST: previous close above the level, then dipped to it and held (2026-11-06:
+    # without the p.close condition a stock breaking UP through a level from below counted)
+    hit = [(k, v) for k, v in sup.items() if p.close > v and t.low <= v * 1.01 and t.close >= v * 0.995]
     s100, s200 = c.tail(100).mean(), c.tail(200).mean()
     base = bool(hit) and volx >= 1.0 and rng >= 0.35
     strict = base and t.close > s100 and t.close > s200

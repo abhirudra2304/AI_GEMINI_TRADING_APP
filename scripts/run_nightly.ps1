@@ -14,7 +14,11 @@ $python = "C:\AI_GEMINI_TRADING_APP\.venv\Scripts\python.exe"
 function Log($msg) { "$(Get-Date -Format 'HH:mm:ss') $msg" | Out-File -FilePath $logFile -Append -Encoding utf8 }
 
 Log "=== Nightly run started ==="
-foreach ($step in @("strategy_paper.py update", "apply_official_closes.py", "score_new_outcomes.py", "fii_dii_log.py")) {
+#  4. journal.py: one row per day + watch signals to journal/ (2026-11-06)
+#  5. Fridays: journal_review.py --days 7 -> journal/review_<date>.md
+$steps = @("strategy_paper.py update", "apply_official_closes.py", "score_new_outcomes.py", "fii_dii_log.py", "journal.py")
+if ((Get-Date).DayOfWeek -eq 'Friday') { $steps += "journal_review.py --days 7" }
+foreach ($step in $steps) {
     Log "-> $step"
     $parts = $step.Split(" ")
     & $python @parts *>&1 | Out-File -FilePath $logFile -Append -Encoding utf8

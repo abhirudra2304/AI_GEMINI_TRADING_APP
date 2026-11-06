@@ -38,6 +38,20 @@ def delivery(sym, n=60):
     return pd.DataFrame(rows, columns=["date", "close", "prev", "traded", "deliv_qty", "deliv_pct"])
 
 
+def delivery_eval(sym, n=60):
+    """Latest-session delivery spike dict, or None if under 25 sessions (used by journal.py)."""
+    d = delivery(sym, n)
+    if len(d) < 25:
+        return None
+    t, base = d.iloc[-1], d.iloc[-21:-1]
+    qx = t.deliv_qty / base.deliv_qty.mean()
+    dp = t.deliv_pct - base.deliv_pct.mean()
+    spike = qx >= 1.5 and dp >= 5
+    return {"date": t.date, "close": float(t.close), "chg_pct": round(100 * (t.close / t.prev - 1), 2),
+            "deliv_pct": round(float(t.deliv_pct), 1), "deliv_x": round(float(qx), 2), "deliv_dpts": round(float(dp), 1),
+            "spike": ("ACCUMULATION" if t.close >= t.prev else "DISTRIBUTION") if spike else ""}
+
+
 def delivery_report(sym):
     d = delivery(sym)
     if len(d) < 25:
