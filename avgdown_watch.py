@@ -4,7 +4,7 @@
     python avgdown_watch.py --live               # also pull today's bar from Angel (5 calls)
     python avgdown_watch.py HAL BDL --live
 
-Support = 50/100/200DMA, 52w low and the heaviest-volume price bins of the last 120 sessions that sit
+Support = 50/100/200DMA, 52w low and the heaviest-volume price bins of the last 250 sessions that sit
 at or below the latest close. Signals on the latest bar:
   STRICT = touched a support (low within 1% of it) AND close held above it AND volume >= 1.0x the
            prior 15-day average AND close in the upper 65% of the day's range AND close above the
@@ -38,15 +38,19 @@ def daily(sym):
 
 
 def live_bar(sym, d):
+    """Merge today's Angel bar onto the cached history (a fresh 250-day fetch alone would shorten
+    the 200DMA and 52w-low windows to ~170 sessions)."""
     from data_broker import DataBroker
     b = getattr(live_bar, "_b", None) or DataBroker()
     live_bar._b = b
-    n = b.fetch_daily_candles(sym, days_back=250)
+    n = b.fetch_daily_candles(sym, days_back=10)
     n.columns = [c.lower() for c in n.columns]
     if "timestamp" in n.columns:
         n = n.set_index("timestamp")
-    n.index = pd.to_datetime(n.index).tz_localize(None)
-    return n
+    n.index = pd.to_datetime(n.index).tz_localize(None).normalize()
+    d = d.copy()
+    d.index = d.index.normalize()
+    return pd.concat([d[~d.index.isin(n.index)], n[d.columns.intersection(n.columns)]]).sort_index()
 
 
 def supports(d):
@@ -54,10 +58,10 @@ def supports(d):
     last = c.iloc[-1]
     lv = {"SMA50": c.tail(50).mean(), "SMA100": c.tail(100).mean(), "SMA200": c.tail(200).mean(),
           "52wLow": d["low"].tail(250).min()}
-    t = d.tail(120)
+    t = d.tail(250)
     bins = pd.cut(t["close"], 40)
     vol = t.groupby(bins, observed=True)["volume"].sum().sort_values(ascending=False)
-    for iv in vol.index[:4]:
+    for iv in vol.index[:6]:
         lv[f"VolNode {iv.mid:.0f}"] = iv.mid
     return {k: v for k, v in lv.items() if v <= last * 1.01}
 
