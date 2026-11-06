@@ -73,6 +73,10 @@ def _load_momentum_config() -> dict:
         return _DEFAULT_MOMENTUM_CONFIG
 
 
+def _empty(df) -> bool:
+    return df is None or df.empty
+
+
 def _is_scan_window(cfg: dict) -> bool:
     now = datetime.now(config.MARKET_TZ)
     if now.weekday() >= 5:
@@ -318,7 +322,15 @@ def run_momentum_scan(broker: Optional[DataBroker] = None, force_refresh: bool =
         if sector_index:
             sector_indices_to_fetch.add(sector_index)
     data_store = _fetch_data_for_universe(broker, sorted(sector_indices_to_fetch), ['daily'], data_store)
-    data_store = _fetch_data_for_universe(broker, symbols_only, ['hourly', '15min', '5min'], data_store)
+    # Only 15min feeds compute_emfb_metrics (5min is its fallback when 15min is
+    # empty; hourly is never read). Fetching all three was ~657 API calls and
+    # ~44 min in the 14:30 decision run, so the brief landed after the 15:15
+    # closing auction on every run 2026-10-16..11-06. Fetch 15min for all, then
+    # 5min only for the symbols whose 15min came back empty.
+    data_store = _fetch_data_for_universe(broker, symbols_only, ['15min'], data_store)
+    need_5min = [s for s in symbols_only if _empty(data_store.get(s, {}).get('15min'))]
+    if need_5min:
+        data_store = _fetch_data_for_universe(broker, need_5min, ['5min'], data_store)
 
     weight_profile = cfg.get('weight_profile', 'DEFAULT')
     logger.info(f"Applying momentum weight profile: {weight_profile}")
@@ -408,7 +420,7 @@ def run_momentum_scan(broker: Optional[DataBroker] = None, force_refresh: bool =
             f"{missing_symbols[:10]}{'...' if len(missing_symbols) > 10 else ''}"
         )
         time_sleep.sleep(5)
-        data_store = _fetch_data_for_universe(broker, missing_symbols, ['hourly', '15min', '5min'], data_store)
+        data_store = _fetch_data_for_universe(broker, missing_symbols, ['15min', '5min'], data_store)
         recovered = 0
         with ThreadPoolExecutor(max_workers=config.AppConfig.SAFE_API_WORKERS) as executor:
             retry_futures = {executor.submit(compute_metrics_for_stock, s): s['symbol'] for s in missing_stocks}
