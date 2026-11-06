@@ -52,12 +52,19 @@ def one(sym):
         if xml:
             rec.update(parse(xml))
         out.append(rec)
-    json.dump(out, open(p, "w"))
+    with open(p + ".tmp", "w") as fh:   # atomic: a shutdown mid-write must not leave a half file
+        json.dump(out, fh)
+    os.replace(p + ".tmp", p)
     return f"{len(out)} qtrs, MF parsed {sum('MF' in r for r in out)}"
 
 
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
+    for fn in os.listdir(OUT):   # drop files a previous run left half-written
+        try:
+            json.load(open(os.path.join(OUT, fn)))
+        except Exception:
+            os.remove(os.path.join(OUT, fn))
     syms = [l.strip() for l in open(sys.argv[1]) if l.strip() and l.strip() != "0"]
     t0 = datetime.now()
     for i, s in enumerate(syms, 1):
