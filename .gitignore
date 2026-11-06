@@ -97,3 +97,4 @@ nse_holidays.json
 results_filings_cache.json
 fundamentals_cache/
 engine_snapshot_*.csv
+shp_cache/
