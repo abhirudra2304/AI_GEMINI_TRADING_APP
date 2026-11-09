@@ -40,3 +40,11 @@ Written before any shareholding data was downloaded. Rules are not changed after
 
 ## Data-cleaning note (2026-11-09, before any results)
 Some 2025 XBRL filings store the percentage x100 (DATAPATTNS Jun-2025 MF = 672 for 6.72%). Any MF/FPI/DII value above 100 is divided by 100 before deltas are computed. Found while reading one stock's history, not from test output.
+
+## Result (2026-11-09, run once on the full 662-symbol download)
+5,462 events, 556 symbols, 18 qualifying cohorts at h=126.
+- **Primary (ΔMF Q5, h=126): FAIL.** Q5 net +1.04%, t=1.34 (needs ≥2.5), halves −0.33 / +2.41 (first half negative), 61% cohorts positive, Q5−Q1 +2.40%.
+- Secondary h=63: Q5 net +0.98%, t=2.49, halves −0.13 / +1.98, 79% positive.
+- ΔFPI Q5 h=126: −1.88% (t=−2.18). Stocks where foreign funds raised stake underperformed.
+- Absolute ΔMF ≥ +1pt: +0.54% at 63d, −0.29% at 126d.
+Survivorship bias favours a PASS, so the true effect is likely smaller than shown.
