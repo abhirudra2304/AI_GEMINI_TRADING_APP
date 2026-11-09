@@ -37,3 +37,6 @@ Written before any shareholding data was downloaded. Rules are not changed after
 ## Known limitations
 - Only about 5 years and 20 cohorts.
 - The API is keyed by the current symbol, so delisted or renamed stocks are missing (survivorship). This biases toward a PASS, so a PASS needs extra caution.
+
+## Data-cleaning note (2026-11-09, before any results)
+Some 2025 XBRL filings store the percentage x100 (DATAPATTNS Jun-2025 MF = 672 for 6.72%). Any MF/FPI/DII value above 100 is divided by 100 before deltas are computed. Found while reading one stock's history, not from test output.

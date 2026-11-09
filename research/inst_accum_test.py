@@ -42,6 +42,9 @@ def load_shp():
         if not recs:
             continue
         d = pd.DataFrame(recs).sort_values(["q", "b"]).drop_duplicates("q", keep="first")  # first filing = point in time
+        for k in ("MF", "FPI", "DII"):   # some 2025 filings store percent x100 (DATAPATTNS Jun-25 MF = 672)
+            d[k] = pd.to_numeric(d[k], errors="coerce")
+            d.loc[d[k] > 100, k] = d.loc[d[k] > 100, k] / 100
         d["dMF"] = d.MF.diff()
         same = d.FPI_key.eq(d.FPI_key.shift())
         d["dFPI"] = d.FPI.diff().where(same)
