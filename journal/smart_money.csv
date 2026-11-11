@@ -12,3 +12,17 @@ date,symbol,type,price,detail,in_universe
 2026-11-06,MARUTI,MKT_DELIV_ACCUM,12750.0,"delivery 63% (+10 pts), 2.2x qty, +0.8%, turnover Rs 1171 cr",True
 2026-11-06,HDFCLIFE,MKT_DELIV_ACCUM,565.3,"delivery 59% (+12 pts), 3.4x qty, +4.0%, turnover Rs 326 cr",True
 2026-11-06,ICICILIFE,MKT_DELIV_ACCUM,438.9,"delivery 64% (+11 pts), 2.6x qty, +2.6%, turnover Rs 134 cr",False
+2026-11-09,COHANCE,INST_DEAL_SELL,430.0,JASTI FAMILY TRUST block/bulk net Rs -258 cr,False
+2026-11-11,COHANCE,INST_DEAL_SELL,449.5,JASTI FAMILY TRUST block/bulk net Rs -189 cr,False
+2026-11-11,CPPLUS,INST_DEAL_BUY,4140.0,KOTAK MAHINDRA MUTUAL FUND block net Rs +233 cr,False
+2026-11-11,CPPLUS,INST_DEAL_BUY,4140.0,MOTILAL OSWAL MUTUAL FUND block/bulk net Rs +698 cr,False
+2026-11-11,SOLARA,INST_DEAL_BUY,663.84,FIRST SENTIER INVESTORS ICVC - SI INDIAN SUBCONTINENT ALL CAP FUND bulk net Rs +37 cr,False
+2026-11-11,SOLARA,INST_DEAL_SELL,663.78,THE SCOTTISH ORIENTAL SMALLER COMPANIES TRUST PLC bulk net Rs -37 cr,False
+2026-11-11,MARUTI,MKT_DELIV_ACCUM,13185.0,"delivery 68% (+15 pts), 2.3x qty, +2.0%, turnover Rs 1264 cr",True
+2026-11-11,LENSKART,MKT_DELIV_ACCUM,723.1,"delivery 69% (+12 pts), 2.6x qty, +0.6%, turnover Rs 799 cr",True
+2026-11-11,ONGC,MKT_DELIV_ACCUM,234.8,"delivery 72% (+13 pts), 2.9x qty, +0.6%, turnover Rs 619 cr",True
+2026-11-11,CDSL,MKT_DELIV_ACCUM,1407.0,"delivery 42% (+10 pts), 4.3x qty, +3.8%, turnover Rs 522 cr",True
+2026-11-11,SANSERA,MKT_DELIV_ACCUM,4655.1,"delivery 64% (+15 pts), 2.1x qty, +0.0%, turnover Rs 169 cr",False
+2026-11-11,360ONE,MKT_DELIV_ACCUM,1170.0,"delivery 66% (+13 pts), 2.4x qty, +2.8%, turnover Rs 208 cr",True
+2026-11-11,PIRAMALFIN,MKT_DELIV_ACCUM,2102.4,"delivery 79% (+22 pts), 2.3x qty, +1.5%, turnover Rs 123 cr",False
+2026-11-11,UNIMECH,MKT_DELIV_ACCUM,1916.8,"delivery 51% (+13 pts), 2.9x qty, +6.1%, turnover Rs 82 cr",True
