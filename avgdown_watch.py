@@ -6,9 +6,11 @@
 
 Support = 50/100/200DMA, 52w low and the heaviest-volume price bins of the last 250 sessions that sit
 at or below the latest close. Signals on the latest bar:
-  STRICT = touched a support (low within 1% of it) AND close held above it AND volume >= 1.0x the
-           prior 15-day average AND close in the upper 65% of the day's range AND close above the
-           100 and 200DMA (the 2026-10-08 average-down bar).
+  STRICT = touched a support (low within 1% of it) AND close held above it AND close in the upper 65%
+           of the day's range AND close above the 100 and 200DMA (the 2026-10-08 average-down bar) AND
+           volume: up day >= 1.0x the prior 15-day average; DOWN day < 1.0x (no panic) OR a bottoming
+           tail (lower wick > 50% of range). Down-day touch on > 1.5x volume without that tail =
+           HIGH_VOL_SUPPORT_TEST - WAIT (2026-11-13: the old rule tagged HAL -2.1% on 3.5x as STRICT).
   EARLY  = same touch/hold/volume/range test, but the 100/200DMA condition is waived and the close
            must be above the prior close (first sign of a base on a broken name).
 Intraday (--live) volume is partial-day, so the volume test is understated until after 15:35.
@@ -19,7 +21,16 @@ import os
 import numpy as np
 import pandas as pd
 
-HOLD = {"SOLARINDS": 18769.0, "DIXON": 14462.0}
+def _entries(path="holdings_entries.csv"):
+    """Average buy prices from holdings_entries.csv (symbol, avg_buy_price, qty, as_of, note); blanks skipped."""
+    try:
+        e = pd.read_csv(path)
+        return {r.symbol: float(r.avg_buy_price) for r in e.itertuples() if pd.notna(r.avg_buy_price)}
+    except Exception:
+        return {"SOLARINDS": 18769.0, "DIXON": 14462.0}
+
+
+HOLD = _entries()
 DEFAULT = ["SOLARINDS", "NETWEB", "DIXON", "HAL", "BDL"]
 
 
@@ -66,23 +77,50 @@ def supports(d):
     return {k: v for k, v in lv.items() if v <= last * 1.01}
 
 
-def evaluate(sym, d):
-    """Signal dict for the latest bar of `d` (used by journal.py; check() prints the same)."""
+def classify(d):
+    """Shared classifier for the latest bar of `d`. Returns (signal, detail dict).
+
+    2026-11-13 rule (HAL case: -2.1% on 3.5x volume into the 50/100DMA was tagged STRICT):
+    on a DOWN day the old 'volume >= 1.0x' test rewarded panic volume. Now a down-day support test
+    needs volume < 1.0x (no panic selling) OR a bottoming tail (lower wick > 50% of the candle range).
+    A down-day touch on > 1.5x volume without that tail is HIGH_VOL_SUPPORT_TEST (WAIT, not a buy).
+    Up-day tests keep the original volume >= 1.0x requirement."""
     t, p = d.iloc[-1], d.iloc[-2]
     c = d["close"]
-    rng = (t.close - t.low) / (t.high - t.low) if t.high > t.low else 0.5
+    span = t.high - t.low
+    rng = (t.close - t.low) / span if span > 0 else 0.5
+    tail = (min(t.open, t.close) - t.low) / span if span > 0 else 0.0
     volx = t.volume / d["volume"].iloc[-16:-1].mean()
     sup = supports(d)
     # a support TEST: previous close above the level, then dipped to it and held (2026-11-06:
     # without the p.close condition a stock breaking UP through a level from below counted)
     hit = [(k, v) for k, v in sup.items() if p.close > v and t.low <= v * 1.01 and t.close >= v * 0.995]
     s100, s200 = c.tail(100).mean(), c.tail(200).mean()
-    base = bool(hit) and volx >= 1.0 and rng >= 0.35
+    down = t.close < p.close
+    reversal = tail > 0.5
+    vol_ok = (volx < 1.0 or reversal) if down else volx >= 1.0
+    base = bool(hit) and vol_ok and rng >= 0.35
     strict = base and t.close > s100 and t.close > s200
     early = base and t.close > p.close
+    if strict:
+        sig = "STRICT"
+    elif early:
+        sig = "EARLY"
+    elif hit and down and volx > 1.5 and not reversal:
+        sig = "HIGH_VOL_SUPPORT_TEST"
+    else:
+        sig = ""
+    return sig, dict(t=t, p=p, rng=rng, tail=tail, volx=volx, sup=sup, hit=hit, s100=s100, s200=s200)
+
+
+def evaluate(sym, d):
+    """Signal dict for the latest bar of `d` (used by journal.py; check() prints the same)."""
+    sig, x = classify(d)
+    t, sup = x["t"], x["sup"]
     below = sorted((v for v in sup.values() if v < t.close), reverse=True)
-    return {"date": d.index[-1].date(), "close": float(t.close), "signal": "STRICT" if strict else "EARLY" if early else "",
-            "touched": ";".join(f"{k} {v:.0f}" for k, v in hit), "rng": round(rng, 2), "volx": round(volx, 2),
+    return {"date": d.index[-1].date(), "close": float(t.close), "signal": sig,
+            "touched": ";".join(f"{k} {v:.0f}" for k, v in x["hit"]), "rng": round(x["rng"], 2), "volx": round(x["volx"], 2),
+            "tail": round(x["tail"], 2),
             "near_support_pct": round(100 * (below[0] / t.close - 1), 1) if below else None}
 
 
@@ -90,25 +128,15 @@ def check(sym, live):
     d = daily(sym)
     if live:
         d = live_bar(sym, d)
-    t, p = d.iloc[-1], d.iloc[-2]
-    c = d["close"]
-    rng = (t.close - t.low) / (t.high - t.low) if t.high > t.low else 0.5
-    volx = t.volume / d["volume"].iloc[-16:-1].mean()
-    sup = supports(d)
-    # a support TEST: previous close above the level, then dipped to it and held (2026-11-06:
-    # without the p.close condition a stock breaking UP through a level from below counted)
-    hit = [(k, v) for k, v in sup.items() if p.close > v and t.low <= v * 1.01 and t.close >= v * 0.995]
-    s100, s200 = c.tail(100).mean(), c.tail(200).mean()
-    base = bool(hit) and volx >= 1.0 and rng >= 0.35
-    strict = base and t.close > s100 and t.close > s200
-    early = base and t.close > p.close
-    sig = "STRICT" if strict else "EARLY" if early else "-"
+    sig, x = classify(d)
+    t, p, sup = x["t"], x["p"], x["sup"]
+    label = {"": "-", "HIGH_VOL_SUPPORT_TEST": "HIGH_VOL_SUPPORT_TEST - WAIT"}.get(sig, sig)
     near = sorted(sup.items(), key=lambda kv: -kv[1])[:3]
     pnl = f"{100 * (t.close / HOLD[sym] - 1):+.1f}% vs entry {HOLD[sym]:.0f}" if sym in HOLD else ""
     print(f"{sym:10} {d.index[-1].date()} close {t.close:9.1f} chg {100 * (t.close / p.close - 1):+5.2f}% "
-          f"rng {rng:.2f} vol {volx:.2f}x  signal {sig:6} {pnl}")
+          f"rng {x['rng']:.2f} tail {x['tail']:.2f} vol {x['volx']:.2f}x  signal {label} {pnl}")
     print("           supports below: " + ", ".join(f"{k} {v:.0f}" for k, v in near)
-          + f" | 100DMA {s100:.0f} 200DMA {s200:.0f}")
+          + f" | 100DMA {x['s100']:.0f} 200DMA {x['s200']:.0f}")
 
 
 if __name__ == "__main__":
