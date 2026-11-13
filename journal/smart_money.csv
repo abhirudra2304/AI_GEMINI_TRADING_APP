@@ -26,3 +26,12 @@ date,symbol,type,price,detail,in_universe
 2026-11-11,360ONE,MKT_DELIV_ACCUM,1170.0,"delivery 66% (+13 pts), 2.4x qty, +2.8%, turnover Rs 208 cr",True
 2026-11-11,PIRAMALFIN,MKT_DELIV_ACCUM,2102.4,"delivery 79% (+22 pts), 2.3x qty, +1.5%, turnover Rs 123 cr",False
 2026-11-11,UNIMECH,MKT_DELIV_ACCUM,1916.8,"delivery 51% (+13 pts), 2.9x qty, +6.1%, turnover Rs 82 cr",True
+2026-11-12,CONTROLPR,INST_DEAL_SELL,610.0,INDIA MAX INVESTMENT FUND LIMITED bulk net Rs -15 cr,False
+2026-11-12,MANAKCOAT,INST_DEAL_SELL,173.35,LONGTHRIVE CAPITAL VCC - TRENDVIEW CAPITAL FUND bulk net Rs -14 cr,False
+2026-11-12,TECHNOCRAF,INST_DEAL_SELL,488.61,VENUS INVESTMENTS VCC - VENUS STELLAR FUND bulk net Rs -17 cr,False
+2026-11-12,SBIN,MKT_DELIV_ACCUM,1086.5,"delivery 67% (+17 pts), 2.8x qty, +2.4%, turnover Rs 2912 cr",True
+2026-11-12,HINDALCO,MKT_DELIV_ACCUM,964.0,"delivery 70% (+15 pts), 3.3x qty, +0.2%, turnover Rs 1233 cr",True
+2026-11-12,GODREJPROP,MKT_DELIV_ACCUM,1879.5,"delivery 57% (+12 pts), 2.3x qty, +4.5%, turnover Rs 247 cr",False
+2026-11-12,GRAPHITE,MKT_DELIV_ACCUM,798.7,"delivery 52% (+13 pts), 2.1x qty, +3.3%, turnover Rs 95 cr",False
+2026-11-12,PETRONET,MKT_DELIV_ACCUM,335.0,"delivery 75% (+16 pts), 2.4x qty, +1.6%, turnover Rs 177 cr",False
+2026-11-12,SHIPROCKET,MKT_DELIV_ACCUM,129.97,"delivery 74% (+41 pts), 3.4x qty, +1.8%, turnover Rs 44 cr",False
