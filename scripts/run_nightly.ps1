@@ -16,7 +16,7 @@ function Log($msg) { "$(Get-Date -Format 'HH:mm:ss') $msg" | Out-File -FilePath 
 Log "=== Nightly run started ==="
 #  4. journal.py: one row per day + watch signals to journal/ (2026-11-06)
 #  5. Fridays: journal_review.py --days 7 -> journal/review_<date>.md
-$steps = @("strategy_paper.py update", "apply_official_closes.py", "score_new_outcomes.py", "fii_dii_log.py", "fao_participant_oi.py", "journal.py")
+$steps = @("strategy_paper.py update", "apply_official_closes.py", "score_new_outcomes.py", "fii_dii_log.py", "fao_participant_oi.py", "journal.py", "daily_market_scan.py")
 if ((Get-Date).DayOfWeek -eq 'Friday') { $steps += "journal_review.py --days 7" }
 foreach ($step in $steps) {
     Log "-> $step"
