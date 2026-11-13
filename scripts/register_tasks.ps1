@@ -1,4 +1,4 @@
-# One-time setup: registers the 14:30 decision scan and the 20:15 nightly data job as
+# One-time setup: registers the 14:00 decision scan and the 20:15 nightly data job as
 # Mon-Fri scheduled tasks that run whether or not you are signed in (same as Prewarm).
 # Re-running it replaces the two tasks; it does not touch Prewarm or EOD.
 $ErrorActionPreference = "Stop"
@@ -6,8 +6,8 @@ $user = "$env:USERDOMAIN\$env:USERNAME"
 $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType S4U -RunLevel Limited
 $days = "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"
 $defs = @(
-    @{ Name = "TradingApp_Decision"; Time = "14:30"; Script = "run_decision.ps1"; StartWhenAvailable = $false
-       Desc = "Decision scan (momentum --force-refresh) + BTST/SWING/GRIND brief before the 15:15 closing auction" },
+    @{ Name = "TradingApp_Decision"; Time = "14:00"; Script = "run_decision.ps1"; StartWhenAvailable = $false
+       Desc = "Decision scan (momentum --force-refresh) + BTST/SWING/GRIND brief before the 15:15 closing auction (moved 14:30 -> 14:00 on 2026-11-13 so the engine snapshot beats the 15:11 cutoff)" },
     @{ Name = "TradingApp_Nightly"; Time = "20:15"; Script = "run_nightly.ps1"; StartWhenAvailable = $true
        Desc = "NSE bhavcopy update, official-close overlay, outcome scoring" }
 )
