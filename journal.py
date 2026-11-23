@@ -108,6 +108,15 @@ def _deals(day, universe):
     d["Date"] = pd.to_datetime(d["Date"].astype(str).str.strip(), format="%d-%b-%Y", errors="coerce")
     d = d[d["Date"].dt.date == day]
     d["Symbol"] = d["Symbol"].astype(str).str.strip()
+    try:  # audit trail: NSE's file only ever holds the latest session, so keep the raw legs (2026-11-23:
+        # an INST_DEAL row could not be re-checked after the fact)
+        raw = os.path.join(OUT, "deals_raw.csv")
+        keep = d[[c for c in ("Date", "Symbol", "Client Name", "Buy/Sell", "Quantity Traded", "Trade Price / Wght. Avg. Price", "kind") if c in d.columns]]
+        old = pd.read_csv(raw) if os.path.exists(raw) else None
+        out = pd.concat([old, keep.assign(Date=keep["Date"].dt.strftime("%Y-%m-%d"))]) if old is not None else keep.assign(Date=keep["Date"].dt.strftime("%Y-%m-%d"))
+        out.drop_duplicates().to_csv(raw, index=False)
+    except Exception:
+        pass
     if universe is not None:
         d = d[d.Symbol.isin(universe)]
     d["qty"] = pd.to_numeric(d["Quantity Traded"].astype(str).str.replace(",", ""), errors="coerce")
