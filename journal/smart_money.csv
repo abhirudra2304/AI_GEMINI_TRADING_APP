@@ -119,3 +119,12 @@ date,symbol,type,price,detail,in_universe
 2026-11-19,CRAFTSMAN,MKT_DELIV_ACCUM,11930.0,"delivery 69% (+20 pts), 2.7x qty, +5.2%, turnover Rs 115 cr",False
 2026-11-19,LIQUIDPLUS,MKT_DELIV_ACCUM,1113.43,"delivery 100% (+29 pts), 2.1x qty, +0.0%, turnover Rs 61 cr",False
 2026-11-19,COROMANDEL,MKT_DELIV_ACCUM,1972.0,"delivery 85% (+35 pts), 2.8x qty, +0.7%, turnover Rs 68 cr",False
+2026-11-20,MANAKCOAT,INST_DEAL_SELL,160.0,ELYSIAN WEALTH FUND bulk net Rs -16 cr,False
+2026-11-20,AXISBANK,MKT_DELIV_ACCUM,1446.0,"delivery 70% (+10 pts), 3.7x qty, +4.7%, turnover Rs 3057 cr",True
+2026-11-20,MEESHO,MKT_DELIV_ACCUM,259.92,"delivery 63% (+16 pts), 2.8x qty, +0.4%, turnover Rs 793 cr",True
+2026-11-20,LICHSGFIN,MKT_DELIV_ACCUM,614.9,"delivery 57% (+11 pts), 2.5x qty, +0.8%, turnover Rs 367 cr",False
+2026-11-20,MFSL,MKT_DELIV_ACCUM,1435.1,"delivery 76% (+21 pts), 2.5x qty, +2.6%, turnover Rs 286 cr",False
+2026-11-20,PHOENIXLTD,MKT_DELIV_ACCUM,2285.3,"delivery 66% (+12 pts), 2.2x qty, +2.1%, turnover Rs 197 cr",False
+2026-11-20,PRESTIGE,MKT_DELIV_ACCUM,1680.0,"delivery 59% (+12 pts), 4.4x qty, +1.5%, turnover Rs 274 cr",False
+2026-11-20,SHREECEM,MKT_DELIV_ACCUM,25475.0,"delivery 75% (+28 pts), 6.2x qty, +1.4%, turnover Rs 222 cr",True
+2026-11-20,SBINIFTY50,MKT_DELIV_ACCUM,277.72,"delivery 87% (+16 pts), 2.5x qty, +1.1%, turnover Rs 72 cr",False
