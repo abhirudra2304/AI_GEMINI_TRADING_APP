@@ -9,6 +9,35 @@
             "command": "python C:/AI_GEMINI_TRADING_APP/.claude/hooks/block_blocking_scan_modes.py"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/AI_GEMINI_TRADING_APP/.claude/hooks/protect_strategy_files.py"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/AI_GEMINI_TRADING_APP/.claude/hooks/block_orders.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/AI_GEMINI_TRADING_APP/.claude/hooks/run_tests.py",
+            "timeout": 300
+          }
+        ]
       }
     ]
   }
