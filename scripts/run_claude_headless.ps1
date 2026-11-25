@@ -57,14 +57,17 @@ $out = Join-Path $logDir "claude_${Mode}_stdout.tmp"
 $err = Join-Path $logDir "claude_${Mode}_stderr.tmp"
 $p = Start-Process -FilePath $claude -ArgumentList $argList -WorkingDirectory $root -NoNewWindow -PassThru `
         -RedirectStandardOutput $out -RedirectStandardError $err
+$null = $p.Handle   # cache the process handle, otherwise ExitCode comes back empty with -PassThru
 if (-not $p.WaitForExit($TimeoutMinutes * 60 * 1000)) {
     $timedOut = $true
     Log "  TIMEOUT after $TimeoutMinutes min - killing claude"
     & taskkill /PID $p.Id /T /F *>&1 | Out-Null   # whole tree, so no orphan python keeps main.pid
 }
 $p.WaitForExit()   # populates ExitCode
-Get-Content $out -ErrorAction SilentlyContinue | Out-File -FilePath $logFile -Append -Encoding utf8
-$e = Get-Content $err -ErrorAction SilentlyContinue
+# claude can echo a malformed bearer token in its error text: never let it reach the log
+function Hide-Token($s) { [regex]::Replace([regex]::Replace(($s -join "`n"), '(?s)Bearer <.*?>', 'Bearer <REDACTED>'), 'sk-ant-\S+', '<REDACTED>') }
+Hide-Token (Get-Content $out -ErrorAction SilentlyContinue) | Out-File -FilePath $logFile -Append -Encoding utf8
+$e = Get-Content $err -ErrorAction SilentlyContinue | ForEach-Object { Hide-Token $_ }
 if ($e) { Log "--- stderr ---"; $e | Out-File -FilePath $logFile -Append -Encoding utf8 }
 Remove-Item $out, $err -ErrorAction SilentlyContinue
 Log "=== claude headless [$Mode] finished $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') exit=$($p.ExitCode) ==="
