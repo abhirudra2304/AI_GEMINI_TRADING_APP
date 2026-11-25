@@ -128,3 +128,13 @@ date,symbol,type,price,detail,in_universe
 2026-11-20,PRESTIGE,MKT_DELIV_ACCUM,1680.0,"delivery 59% (+12 pts), 4.4x qty, +1.5%, turnover Rs 274 cr",False
 2026-11-20,SHREECEM,MKT_DELIV_ACCUM,25475.0,"delivery 75% (+28 pts), 6.2x qty, +1.4%, turnover Rs 222 cr",True
 2026-11-20,SBINIFTY50,MKT_DELIV_ACCUM,277.72,"delivery 87% (+16 pts), 2.5x qty, +1.1%, turnover Rs 72 cr",False
+2026-11-23,LENSKART,INST_DEAL_BUY,725.0,GOLDMAN SACHS BANK EUROPESE-ODI block net Rs +25 cr,True
+2026-11-23,LENSKART,INST_DEAL_BUY,725.0,GOLDMAN SACHS INVESTMENTS MAURITIUS I LIMITED block net Rs +448 cr,True
+2026-11-23,LENSKART,INST_DEAL_SELL,725.0,LTR FOCUS FUND-FDI block net Rs -85 cr,True
+2026-11-23,LENSKART,INST_DEAL_BUY,725.0,SOCIETE GENERALE - ODI block net Rs +448 cr,True
+2026-11-23,LENSKART,INST_DEAL_SELL,725.0,STEADVIEW CAPITAL MAURITIUS LIMITED-FDI block/bulk net Rs -1670 cr,True
+2026-11-23,PRESTIGE,MKT_DELIV_ACCUM,1687.0,"delivery 71% (+24 pts), 5.0x qty, +0.4%, turnover Rs 313 cr",False
+2026-11-23,LGEINDIA,MKT_DELIV_ACCUM,1777.5,"delivery 75% (+17 pts), 3.7x qty, +2.1%, turnover Rs 301 cr",True
+2026-11-23,DABUR,MKT_DELIV_ACCUM,399.0,"delivery 58% (+11 pts), 4.7x qty, +1.5%, turnover Rs 265 cr",False
+2026-11-23,LIQUIDPLUS,MKT_DELIV_ACCUM,1114.27,"delivery 98% (+27 pts), 2.7x qty, +0.0%, turnover Rs 82 cr",False
+2026-11-23,GUJENERGY,MKT_DELIV_ACCUM,230.03,"delivery 73% (+14 pts), 2.9x qty, +1.6%, turnover Rs 73 cr",False

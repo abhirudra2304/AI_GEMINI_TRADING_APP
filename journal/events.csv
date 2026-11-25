@@ -23,3 +23,4 @@ date,symbol,type,price,detail
 2026-11-19,MUTHOOTFIN,DELIV_DISTRIBUTION,2618.0,"delivery 49% (+8 pts), 2.5x qty"
 2026-11-20,AXISBANK,DELIV_ACCUMULATION,1446.0,"delivery 70% (+10 pts), 3.7x qty"
 2026-11-20,AXISBANK,AVGDOWN_STRICT,1446.0,"touched VolNode 1357 1357; vol 2.17x, range 1.0"
+2026-11-23,SOLARINDS,DELIV_DISTRIBUTION,18178.0,"delivery 51% (+15 pts), 1.7x qty"

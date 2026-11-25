@@ -233,3 +233,155 @@ run_time,strategy,rank,score,Symbol,Sector,Trigger,Stop,Target,stale_run,Confide
 2026-11-19 15:45,SWING,8,18.3,ICICIBANK,FINANCE,1608.9,1553.63,1719.43,True,,
 2026-11-19 15:45,SWING,9,15.4,KOTAKBANK,FINANCE,503.0,483.84,541.32,True,,
 2026-11-19 15:45,SWING,10,14.3,PNB,PSU_BANK,154.85,153.97,156.61,True,,
+2026-11-23 16:14,BTST,1,58.6,APOLLOHOSP,HEALTHCARE,9257.0,9190.74,9356.39,True,,
+2026-11-23 16:14,BTST,2,36.4,MAXHEALTH,HEALTHCARE,1089.55,1043.46,1158.68,True,,
+2026-11-23 16:14,BTST,3,34.5,PIDILITIND,CHEMICALS,1594.2,1537.73,1678.91,True,,
+2026-11-23 16:14,BTST,4,34.0,LODHA,REALTY,1219.0,1157.46,1311.32,True,,
+2026-11-23 16:14,BTST,5,33.4,INDHOTEL,CONSUMER,906.0,873.04,955.44,True,,
+2026-11-23 16:14,BTST,6,31.0,PGEL,ELECTRONICS,586.8,556.26,632.61,True,,
+2026-11-23 16:14,BTST,7,30.4,360ONE,FINANCE,1201.15,1152.95,1273.45,True,,
+2026-11-23 16:14,BTST,8,28.5,IREDA,FINANCE,132.2,123.93,144.61,True,,
+2026-11-23 16:14,BTST,9,28.0,INDIANB,PSU_BANK,933.0,899.96,982.57,True,,
+2026-11-23 16:14,BTST,10,27.8,M&M,AUTO,3487.4,3349.14,3694.79,True,,
+2026-11-23 16:14,SWING,1,36.0,FLUOROCHEM,CHEMICALS,4890.0,4596.48,5477.04,True,,
+2026-11-23 16:14,SWING,2,31.3,COFORGE,IT,2142.3,1994.82,2437.26,True,,
+2026-11-23 16:14,SWING,3,22.2,M&M,AUTO,3487.4,3302.13,3857.93,True,,
+2026-11-23 16:14,SWING,4,21.6,DCBBANK,FINANCE,235.4,219.37,267.45,True,,
+2026-11-23 16:14,SWING,5,21.4,BHARTIARTL,TELECOM,2128.5,2053.89,2277.71,True,,
+2026-11-23 16:14,SWING,6,20.1,360ONE,FINANCE,1201.15,1131.75,1339.96,True,,
+2026-11-23 16:14,SWING,7,18.9,NAVINFLUOR,CHEMICALS,10154.0,9618.02,11225.97,True,,
+2026-11-23 16:14,SWING,8,18.6,DRREDDY,PHARMA,1380.1,1341.7,1456.9,True,,
+2026-11-23 16:14,SWING,9,17.0,INDHOTEL,CONSUMER,906.0,863.37,991.26,True,,
+2026-11-23 16:14,SWING,10,14.6,KOTAKBANK,FINANCE,502.85,479.31,549.94,True,,
+2026-11-23 16:14,EMFB,1,93.6,PERSISTENT,IT,6282.5,6020.54,6937.39,True,High,RS vs Nifty (1D): +4.34% | Recovery: 623% | Closing Strength: 72% | LH Vol Ratio: 3.6x | VWAP Dist: +0.27%
+2026-11-23 16:14,EMFB,2,91.1,PWL,OTHER,139.5,130.45,162.12,True,High,RS vs Nifty (1D): +3.87% | Recovery: 2444% | Closing Strength: 71% | LH Vol Ratio: 1.0x | VWAP Dist: +0.40%
+2026-11-23 16:14,EMFB,3,90.5,COFORGE,IT,2142.3,2035.63,2408.97,True,High,RS vs Nifty (1D): +4.41% | Recovery: 1283% | Closing Strength: 75% | LH Vol Ratio: 1.7x | VWAP Dist: +0.22%
+2026-11-23 16:14,EMFB,4,89.4,TCS,IT,2460.0,2354.52,2723.7,True,High,RS vs Nifty (1D): +5.27% | Recovery: 200% | Closing Strength: 66% | LH Vol Ratio: 3.2x | VWAP Dist: +0.15%
+2026-11-23 16:14,EMFB,5,88.2,EICHERMOT,AUTO,8172.5,7850.15,8978.37,True,High,RS vs Nifty (1D): +2.48% | Recovery: 92% | Closing Strength: 71% | LH Vol Ratio: 2.9x | VWAP Dist: +0.25%
+2026-11-23 16:14,EMFB,6,84.1,IREDA,FINANCE,132.2,123.84,153.1,True,High,RS vs Nifty (1D): +2.17% | Recovery: 97% | Closing Strength: 96% | LH Vol Ratio: 7.3x | VWAP Dist: +1.79%
+2026-11-23 16:14,EMFB,7,83.4,PTCIL,DEFENCE,24450.0,23298.59,27328.53,True,High,RS vs Nifty (1D): +3.12% | Recovery: 212% | Closing Strength: 87% | LH Vol Ratio: 0.6x | VWAP Dist: +0.91%
+2026-11-23 16:14,EMFB,8,82.3,FINEORG,CHEMICALS,5598.0,5345.3,6229.74,True,High,RS vs Nifty (1D): +3.74% | Recovery: 264% | Closing Strength: 77% | LH Vol Ratio: 1.0x | VWAP Dist: +0.73%
+2026-11-23 16:14,EMFB,9,82.0,APOLLOHOSP,HEALTHCARE,9257.0,8927.08,10081.81,True,High,RS vs Nifty (1D): +2.37% | Recovery: 92% | Closing Strength: 63% | LH Vol Ratio: 2.7x | VWAP Dist: -0.13%
+2026-11-23 16:14,EMFB,10,80.7,SUDEEPPHRM,CHEMICALS,1252.0,1155.41,1493.48,True,High,RS vs Nifty (1D): +6.83% | Recovery: 420% | Closing Strength: 60% | LH Vol Ratio: 1.5x | VWAP Dist: +0.03%
+2026-11-23 16:14,EMFB,11,79.5,NH,HEALTHCARE,1974.9,1898.29,2166.44,True,High,RS vs Nifty (1D): +3.35% | Recovery: 251% | Closing Strength: 54% | LH Vol Ratio: 0.7x | VWAP Dist: -0.05%
+2026-11-23 16:14,EMFB,12,78.0,DIXON,ELECTRONICS,13390.0,12805.83,14850.42,True,High,RS vs Nifty (1D): +3.81% | Recovery: 800% | Closing Strength: 65% | LH Vol Ratio: 1.7x | VWAP Dist: +0.03%
+2026-11-23 16:14,EMFB,13,77.4,MAXHEALTH,HEALTHCARE,1089.55,1043.46,1204.76,True,High,RS vs Nifty (1D): +2.58% | Recovery: 149% | Closing Strength: 46% | LH Vol Ratio: 2.6x | VWAP Dist: +0.05%
+2026-11-23 16:14,EMFB,14,77.3,JKCEMENT,CEMENT,5475.0,5204.13,6152.17,True,High,RS vs Nifty (1D): +2.42% | Recovery: 137% | Closing Strength: 82% | LH Vol Ratio: 0.6x | VWAP Dist: +0.51%
+2026-11-23 16:14,EMFB,15,77.2,MOTILALOFS,FINANCE,1235.0,1161.87,1417.81,True,High,RS vs Nifty (1D): +4.18% | Recovery: 432% | Closing Strength: 80% | LH Vol Ratio: 1.5x | VWAP Dist: +0.78%
+2026-11-23 16:14,EMFB,16,76.5,HEROMOTOCO,AUTO,5535.0,5330.29,6046.78,True,High,RS vs Nifty (1D): +1.73% | Recovery: 92% | Closing Strength: 75% | LH Vol Ratio: 2.4x | VWAP Dist: +0.21%
+2026-11-23 16:14,EMFB,17,76.2,TMCV,AUTO,452.5,432.63,502.17,True,High,RS vs Nifty (1D): +3.33% | Recovery: 65% | Closing Strength: 65% | LH Vol Ratio: 0.9x | VWAP Dist: +0.51%
+2026-11-23 16:14,EMFB,18,75.8,POLICYBZR,FINANCE,1089.1,1008.79,1289.88,True,High,RS vs Nifty (1D): +8.23% | Recovery: 1490% | Closing Strength: 72% | LH Vol Ratio: 2.1x | VWAP Dist: +0.08%
+2026-11-23 16:14,EMFB,19,75.7,LTTS,IT,4223.0,4041.36,4677.11,True,High,RS vs Nifty (1D): +5.19% | Recovery: 1535% | Closing Strength: 89% | LH Vol Ratio: 1.1x | VWAP Dist: +0.80%
+2026-11-23 16:14,EMFB,20,75.6,MOTHERSON,AUTO_ANC,165.76,157.83,185.58,True,High,RS vs Nifty (1D): +1.29% | Recovery: 62% | Closing Strength: 62% | LH Vol Ratio: 1.9x | VWAP Dist: +0.17%
+2026-11-23 16:14,EMFB,21,75.5,KIMS,HEALTHCARE,796.0,762.91,878.73,True,High,RS vs Nifty (1D): +1.80% | Recovery: 62% | Closing Strength: 62% | LH Vol Ratio: 0.5x | VWAP Dist: +0.26%
+2026-11-23 16:14,EMFB,22,74.3,NAVINFLUOR,CHEMICALS,10154.0,9696.07,11298.83,True,Medium,RS vs Nifty (1D): +2.51% | Recovery: 98% | Closing Strength: 49% | LH Vol Ratio: 1.8x | VWAP Dist: +0.06%
+2026-11-23 16:14,EMFB,23,74.1,TATACHEM,CHEMICALS,650.7,613.96,742.55,True,Medium,RS vs Nifty (1D): +3.53% | Recovery: 195% | Closing Strength: 36% | LH Vol Ratio: 0.8x | VWAP Dist: -0.00%
+2026-11-23 16:14,EMFB,24,74.0,AMBER,ELECTRONICS,6850.0,6395.49,7986.27,True,Medium,RS vs Nifty (1D): +3.37% | Recovery: 236% | Closing Strength: 46% | LH Vol Ratio: 1.1x | VWAP Dist: -0.23%
+2026-11-23 16:14,EMFB,25,73.2,TORNTPHARM,PHARMA,4763.7,4618.04,5127.86,True,Medium,RS vs Nifty (1D): +3.33% | Recovery: 194% | Closing Strength: 52% | LH Vol Ratio: 2.1x | VWAP Dist: -0.23%
+2026-11-23 16:14,EMFB,26,73.1,UNITDSPR,CONSUMER,1478.0,1423.71,1613.73,True,Medium,RS vs Nifty (1D): +2.54% | Recovery: 272% | Closing Strength: 61% | LH Vol Ratio: 0.9x | VWAP Dist: -0.01%
+2026-11-23 16:14,EMFB,27,72.9,LGEINDIA,CONSUMER,1775.0,1690.69,1985.78,True,Medium,RS vs Nifty (1D): +1.62% | Recovery: 800% | Closing Strength: 58% | LH Vol Ratio: 0.9x | VWAP Dist: -0.06%
+2026-11-23 16:14,EMFB,28,72.6,ICICIPRULI,FINANCE,465.0,445.9,512.75,True,Medium,RS vs Nifty (1D): +2.96% | Recovery: 93% | Closing Strength: 34% | LH Vol Ratio: 2.2x | VWAP Dist: -0.33%
+2026-11-23 16:14,EMFB,29,72.6,INDHOTEL,CONSUMER,906.0,873.04,988.41,True,Medium,RS vs Nifty (1D): +1.09% | Recovery: 80% | Closing Strength: 67% | LH Vol Ratio: 3.0x | VWAP Dist: +0.04%
+2026-11-23 16:14,EMFB,30,72.5,ACE,CAPITAL_GOODS,1188.0,1131.95,1328.12,True,Medium,RS vs Nifty (1D): +3.26% | Recovery: 256% | Closing Strength: 79% | LH Vol Ratio: 0.7x | VWAP Dist: +0.61%
+2026-11-23 16:14,EMFB,31,71.4,ACMESOLAR,POWER,410.05,390.38,459.22,True,Medium,RS vs Nifty (1D): +2.89% | Recovery: 679% | Closing Strength: 30% | LH Vol Ratio: 0.4x | VWAP Dist: -0.80%
+2026-11-23 16:14,EMFB,32,71.3,JINDALSTEL,METAL,1131.3,1085.37,1246.12,True,Medium,RS vs Nifty (1D): +1.69% | Recovery: 110% | Closing Strength: 61% | LH Vol Ratio: 2.8x | VWAP Dist: +0.05%
+2026-11-23 16:14,EMFB,33,70.9,TECHM,IT,1777.5,1708.04,1951.16,True,Medium,RS vs Nifty (1D): +3.54% | Recovery: 172% | Closing Strength: 61% | LH Vol Ratio: 2.8x | VWAP Dist: -0.17%
+2026-11-23 16:14,EMFB,34,70.4,TITAN,CONSUMER,4680.0,4486.2,5164.51,True,Medium,RS vs Nifty (1D): +3.05% | Recovery: 171% | Closing Strength: 96% | LH Vol Ratio: 3.8x | VWAP Dist: +0.81%
+2026-11-23 16:14,EMFB,35,69.7,DATAPATTNS,DEFENCE,4225.0,3973.28,4854.29,True,Medium,RS vs Nifty (1D): +2.00% | Recovery: 85% | Closing Strength: 79% | LH Vol Ratio: 0.9x | VWAP Dist: +0.92%
+2026-11-23 16:14,EMFB,36,69.6,SRF,CHEMICALS,2514.8,2438.53,2705.48,True,Medium,RS vs Nifty (1D): +1.75% | Recovery: 86% | Closing Strength: 50% | LH Vol Ratio: 2.1x | VWAP Dist: -0.15%
+2026-11-23 16:14,EMFB,37,69.6,MARUTI,AUTO,14010.0,13414.29,15499.27,True,Medium,RS vs Nifty (1D): +1.74% | Recovery: 62% | Closing Strength: 52% | LH Vol Ratio: 3.1x | VWAP Dist: -0.89%
+2026-11-23 16:14,EMFB,38,69.3,CIPLA,PHARMA,1399.9,1358.0,1504.65,True,Medium,RS vs Nifty (1D): +0.68% | Recovery: 68% | Closing Strength: 65% | LH Vol Ratio: 3.9x | VWAP Dist: +0.58%
+2026-11-23 16:14,EMFB,39,69.1,SKFINDIA,AUTO_ANC,1455.2,1412.81,1561.17,True,Medium,RS vs Nifty (1D): +2.34% | Recovery: 151% | Closing Strength: 84% | LH Vol Ratio: 0.4x | VWAP Dist: +1.11%
+2026-11-23 16:14,EMFB,40,68.8,IDEAFORGE,DEFENCE,707.0,660.57,823.07,True,Medium,RS vs Nifty (1D): +3.78% | Recovery: 142% | Closing Strength: 52% | LH Vol Ratio: 1.1x | VWAP Dist: +0.24%
+2026-11-23 16:14,EMFB,41,68.6,VINATIORGA,CHEMICALS,1151.0,1093.69,1294.26,True,Medium,RS vs Nifty (1D): +1.66% | Recovery: 95% | Closing Strength: 80% | LH Vol Ratio: 0.4x | VWAP Dist: +0.68%
+2026-11-23 16:14,EMFB,42,67.8,M&M,AUTO,3487.4,3343.2,3847.9,True,Medium,RS vs Nifty (1D): +0.12% | Recovery: 63% | Closing Strength: 57% | LH Vol Ratio: 2.7x | VWAP Dist: -0.06%
+2026-11-23 16:14,EMFB,43,67.5,VBL,CONSUMER,427.15,412.53,463.7,True,Medium,RS vs Nifty (1D): +1.69% | Recovery: 77% | Closing Strength: 49% | LH Vol Ratio: 1.7x | VWAP Dist: +0.15%
+2026-11-23 16:14,EMFB,44,67.4,NESTLEIND,CONSUMER,1305.9,1261.77,1416.23,True,Medium,RS vs Nifty (1D): +0.31% | Recovery: 64% | Closing Strength: 62% | LH Vol Ratio: 3.0x | VWAP Dist: +0.41%
+2026-11-23 16:14,EMFB,45,67.4,PIDILITIND,CHEMICALS,1594.2,1536.15,1739.34,True,Medium,RS vs Nifty (1D): +0.16% | Recovery: 59% | Closing Strength: 55% | LH Vol Ratio: 4.0x | VWAP Dist: -0.42%
+2026-11-23 16:14,EMFB,46,67.3,CGPOWER,CAPITAL_GOODS,790.6,753.11,884.34,True,Medium,RS vs Nifty (1D): +1.57% | Recovery: 66% | Closing Strength: 58% | LH Vol Ratio: 2.4x | VWAP Dist: +0.28%
+2026-11-23 16:14,EMFB,47,66.7,ZYDUSLIFE,PHARMA,1199.5,1163.91,1288.48,True,Medium,RS vs Nifty (1D): +1.70% | Recovery: 50% | Closing Strength: 42% | LH Vol Ratio: 1.2x | VWAP Dist: +0.00%
+2026-11-23 16:14,EMFB,48,66.6,LODHA,REALTY,1219.0,1157.46,1372.86,True,Medium,RS vs Nifty (1D): +1.77% | Recovery: 66% | Closing Strength: 58% | LH Vol Ratio: 0.9x | VWAP Dist: +0.05%
+2026-11-23 16:14,EMFB,49,66.5,TVSMOTOR,AUTO,4528.2,4359.23,4950.62,True,Medium,RS vs Nifty (1D): +0.40% | Recovery: 59% | Closing Strength: 59% | LH Vol Ratio: 2.1x | VWAP Dist: +0.24%
+2026-11-23 16:14,EMFB,50,66.4,SHRIRAMFIN,FINANCE,995.9,953.43,1102.06,True,Medium,RS vs Nifty (1D): +4.21% | Recovery: 43% | Closing Strength: 35% | LH Vol Ratio: 2.8x | VWAP Dist: +0.06%
+2026-11-23 16:14,EMFB,51,65.7,MCX,FINANCE,3581.6,3392.94,4053.25,True,Medium,RS vs Nifty (1D): +3.07% | Recovery: 158% | Closing Strength: 89% | LH Vol Ratio: 1.4x | VWAP Dist: +1.16%
+2026-11-23 16:14,EMFB,52,65.3,TATACONSUM,CONSUMER,1133.0,1096.06,1225.34,True,Medium,RS vs Nifty (1D): -0.23% | Recovery: 59% | Closing Strength: 58% | LH Vol Ratio: 3.2x | VWAP Dist: +0.23%
+2026-11-23 16:14,EMFB,53,65.1,PARAS,DEFENCE,1257.0,1193.94,1414.66,True,Medium,RS vs Nifty (1D): +2.39% | Recovery: 96% | Closing Strength: 46% | LH Vol Ratio: 0.2x | VWAP Dist: +0.06%
+2026-11-23 16:14,EMFB,54,65.0,BHARTIARTL,TELECOM,2128.5,2065.1,2287.0,True,Medium,RS vs Nifty (1D): +0.18% | Recovery: 63% | Closing Strength: 59% | LH Vol Ratio: 4.0x | VWAP Dist: +0.50%
+2026-11-23 16:14,EMFB,55,65.0,POWERINDIA,CAPITAL_GOODS,30240.0,28473.82,34655.45,True,Medium,RS vs Nifty (1D): +2.05% | Recovery: 86% | Closing Strength: 86% | LH Vol Ratio: 1.1x | VWAP Dist: +0.94%
+2026-11-23 16:14,EMFB,56,65.0,TIMKEN,AUTO_ANC,3092.0,2987.53,3353.17,True,Medium,RS vs Nifty (1D): +1.45% | Recovery: 82% | Closing Strength: 74% | LH Vol Ratio: 0.8x | VWAP Dist: +0.78%
+2026-11-23 16:14,EMFB,57,65.0,SBILIFE,FINANCE,1804.9,1743.27,1958.97,True,Medium,RS vs Nifty (1D): +0.57% | Recovery: 73% | Closing Strength: 63% | LH Vol Ratio: 2.3x | VWAP Dist: +0.54%
+2026-11-23 16:14,EMFB,58,64.6,DALBHARAT,CEMENT,1565.0,1493.62,1743.46,True,Medium,RS vs Nifty (1D): +0.92% | Recovery: 60% | Closing Strength: 48% | LH Vol Ratio: 0.4x | VWAP Dist: +0.23%
+2026-11-23 16:14,EMFB,59,64.5,SUNPHARMA,PHARMA,1860.0,1799.68,2010.81,True,Medium,RS vs Nifty (1D): +0.43% | Recovery: 65% | Closing Strength: 60% | LH Vol Ratio: 3.0x | VWAP Dist: +0.26%
+2026-11-23 16:14,EMFB,60,64.2,HINDUNILVR,CONSUMER,2019.1,1952.19,2186.38,True,Medium,RS vs Nifty (1D): +0.12% | Recovery: 63% | Closing Strength: 50% | LH Vol Ratio: 3.3x | VWAP Dist: +0.05%
+2026-11-23 16:14,EMFB,61,64.1,RELIANCE,ENERGY,1351.0,1308.32,1457.7,True,Medium,RS vs Nifty (1D): -0.18% | Recovery: 57% | Closing Strength: 50% | LH Vol Ratio: 4.8x | VWAP Dist: +0.11%
+2026-11-23 16:14,EMFB,62,64.0,ICICIGI,FINANCE,1742.6,1682.81,1892.06,True,Medium,RS vs Nifty (1D): +2.13% | Recovery: 48% | Closing Strength: 39% | LH Vol Ratio: 2.5x | VWAP Dist: -0.13%
+2026-11-23 16:14,EMFB,63,63.5,MTARTECH,DEFENCE,5642.0,5224.3,6686.26,True,Medium,RS vs Nifty (1D): +2.26% | Recovery: 144% | Closing Strength: 65% | LH Vol Ratio: 1.7x | VWAP Dist: +1.45%
+2026-11-23 16:14,EMFB,64,63.5,TANLA,IT,680.0,635.13,792.17,True,Medium,RS vs Nifty (1D): +4.68% | Recovery: 100% | Closing Strength: 81% | LH Vol Ratio: 0.5x | VWAP Dist: +0.48%
+2026-11-23 16:14,EMFB,65,62.8,DCBBANK,FINANCE,235.4,222.68,267.2,True,Medium,RS vs Nifty (1D): +2.55% | Recovery: 63% | Closing Strength: 33% | LH Vol Ratio: 2.0x | VWAP Dist: -0.52%
+2026-11-23 16:14,EMFB,66,62.3,ASIANPAINT,CONSUMER,2580.4,2489.36,2807.99,True,Medium,RS vs Nifty (1D): +0.68% | Recovery: 49% | Closing Strength: 48% | LH Vol Ratio: 2.7x | VWAP Dist: +0.28%
+2026-11-23 16:14,EMFB,67,61.8,DIVISLAB,PHARMA,11203.0,10773.4,12277.0,True,Medium,RS vs Nifty (1D): +1.95% | Recovery: 64% | Closing Strength: 32% | LH Vol Ratio: 3.0x | VWAP Dist: -0.61%
+2026-11-23 16:14,EMFB,68,61.6,AFCONS,INFRA,220.02,209.09,247.34,True,Medium,RS vs Nifty (1D): +2.31% | Recovery: 101% | Closing Strength: 46% | LH Vol Ratio: 0.0x | VWAP Dist: -0.45%
+2026-11-23 16:14,EMFB,69,61.2,KOTAKBANK,FINANCE,502.85,484.6,548.48,True,Medium,RS vs Nifty (1D): -0.76% | Recovery: 50% | Closing Strength: 45% | LH Vol Ratio: 3.3x | VWAP Dist: -0.09%
+2026-11-23 16:14,EMFB,70,60.9,KPITTECH,IT,525.5,499.87,589.58,True,Medium,RS vs Nifty (1D): +3.00% | Recovery: 132% | Closing Strength: 16% | LH Vol Ratio: 1.1x | VWAP Dist: -0.74%
+2026-11-23 16:14,EMFB,71,60.8,CYIENT,IT,1153.7,1093.03,1305.38,True,Medium,RS vs Nifty (1D): +1.59% | Recovery: 87% | Closing Strength: 38% | LH Vol Ratio: 0.5x | VWAP Dist: -0.46%
+2026-11-23 16:14,EMFB,72,60.8,BEL,DEFENCE,395.8,384.55,423.92,True,Medium,RS vs Nifty (1D): +0.17% | Recovery: 57% | Closing Strength: 55% | LH Vol Ratio: 2.9x | VWAP Dist: +0.14%
+2026-11-23 16:14,EMFB,73,60.4,AUROPHARMA,PHARMA,1796.5,1740.54,1936.4,True,Medium,RS vs Nifty (1D): +1.61% | Recovery: 53% | Closing Strength: 43% | LH Vol Ratio: 2.2x | VWAP Dist: -0.13%
+2026-11-23 16:14,EMFB,74,59.9,PNBHOUSING,FINANCE,1180.2,1126.47,1314.52,True,Low,RS vs Nifty (1D): +0.82% | Recovery: 47% | Closing Strength: 44% | LH Vol Ratio: 0.0x | VWAP Dist: +0.68%
+2026-11-23 16:14,EMFB,75,59.6,PGEL,ELECTRONICS,586.8,555.78,664.35,True,Low,RS vs Nifty (1D): +1.43% | Recovery: 64% | Closing Strength: 22% | LH Vol Ratio: 0.9x | VWAP Dist: -0.55%
+2026-11-23 16:14,EMFB,76,59.4,TRENT,RETAIL,3208.0,3085.14,3515.14,True,Low,RS vs Nifty (1D): +0.24% | Recovery: 53% | Closing Strength: 45% | LH Vol Ratio: 1.9x | VWAP Dist: +0.21%
+2026-11-23 16:14,EMFB,77,59.4,ONGC,ENERGY,222.85,217.29,236.75,True,Low,RS vs Nifty (1D): +1.47% | Recovery: 52% | Closing Strength: 38% | LH Vol Ratio: 3.2x | VWAP Dist: +0.02%
+2026-11-23 16:14,EMFB,78,59.0,OLECTRA,AUTO,997.0,951.78,1110.05,True,Low,RS vs Nifty (1D): +1.66% | Recovery: 91% | Closing Strength: 46% | LH Vol Ratio: 0.5x | VWAP Dist: +0.26%
+2026-11-23 16:14,EMFB,79,59.0,RATEGAIN,IT,675.95,634.0,780.83,True,Low,RS vs Nifty (1D): +4.07% | Recovery: 73% | Closing Strength: 35% | LH Vol Ratio: 0.6x | VWAP Dist: -0.56%
+2026-11-23 16:14,EMFB,80,59.0,SIEMENS,CAPITAL_GOODS,3578.1,3411.09,3995.62,True,Low,RS vs Nifty (1D): +1.62% | Recovery: 36% | Closing Strength: 26% | LH Vol Ratio: 2.1x | VWAP Dist: -0.35%
+2026-11-23 16:14,EMFB,81,58.9,HINDALCO,METAL,900.45,857.94,1006.72,True,Low,RS vs Nifty (1D): -1.38% | Recovery: 96% | Closing Strength: 58% | LH Vol Ratio: 4.6x | VWAP Dist: -0.22%
+2026-11-23 16:14,EMFB,82,58.7,ADANIPORTS,INFRA,1919.0,1857.83,2071.92,True,Low,RS vs Nifty (1D): +1.85% | Recovery: 42% | Closing Strength: 27% | LH Vol Ratio: 2.0x | VWAP Dist: +0.00%
+2026-11-23 16:14,EMFB,83,58.6,ABB,CAPITAL_GOODS,6868.5,6571.61,7610.73,True,Low,RS vs Nifty (1D): +0.80% | Recovery: 47% | Closing Strength: 47% | LH Vol Ratio: 2.1x | VWAP Dist: +0.04%
+2026-11-23 16:14,EMFB,84,58.0,FORTIS,HEALTHCARE,809.0,773.84,896.91,True,Low,RS vs Nifty (1D): -0.19% | Recovery: 51% | Closing Strength: 44% | LH Vol Ratio: 2.8x | VWAP Dist: -0.39%
+2026-11-23 16:14,EMFB,85,57.6,SBIN,FINANCE,1132.65,1089.2,1241.27,True,Low,RS vs Nifty (1D): -1.04% | Recovery: 42% | Closing Strength: 41% | LH Vol Ratio: 2.8x | VWAP Dist: -0.56%
+2026-11-23 16:14,EMFB,86,57.5,NTPC,POWER,315.45,305.31,340.79,True,Low,RS vs Nifty (1D): -0.13% | Recovery: 54% | Closing Strength: 52% | LH Vol Ratio: 3.5x | VWAP Dist: -0.03%
+2026-11-23 16:14,EMFB,87,57.4,DRREDDY,PHARMA,1380.1,1347.02,1462.8,True,Low,RS vs Nifty (1D): +1.02% | Recovery: 49% | Closing Strength: 36% | LH Vol Ratio: 1.7x | VWAP Dist: +0.05%
+2026-11-23 16:14,EMFB,88,57.1,360ONE,FINANCE,1201.15,1150.89,1326.79,True,Low,RS vs Nifty (1D): +1.17% | Recovery: 44% | Closing Strength: 34% | LH Vol Ratio: 1.3x | VWAP Dist: -0.27%
+2026-11-23 16:14,EMFB,89,56.7,CUMMINSIND,CAPITAL_GOODS,4052.8,3830.98,4607.35,True,Low,RS vs Nifty (1D): +0.60% | Recovery: 70% | Closing Strength: 64% | LH Vol Ratio: 2.5x | VWAP Dist: -0.04%
+2026-11-23 16:14,EMFB,90,55.9,BAJFINANCE,FINANCE,1095.5,1048.7,1212.5,True,Low,RS vs Nifty (1D): -0.61% | Recovery: 51% | Closing Strength: 47% | LH Vol Ratio: 3.7x | VWAP Dist: -0.23%
+2026-11-23 16:14,EMFB,91,55.7,SONACOMS,AUTO_ANC,886.0,852.82,968.94,True,Low,RS vs Nifty (1D): +1.02% | Recovery: 51% | Closing Strength: 31% | LH Vol Ratio: 3.6x | VWAP Dist: -0.08%
+2026-11-23 16:14,EMFB,92,55.3,NETWEB,ELECTRONICS,4017.1,3769.68,4635.66,True,Low,RS vs Nifty (1D): -0.17% | Recovery: 57% | Closing Strength: 53% | LH Vol Ratio: 0.6x | VWAP Dist: +0.25%
+2026-11-23 16:14,EMFB,93,55.3,SYRMA,ELECTRONICS,1491.1,1405.12,1706.05,True,Low,RS vs Nifty (1D): +0.13% | Recovery: 39% | Closing Strength: 32% | LH Vol Ratio: 0.8x | VWAP Dist: +0.01%
+2026-11-23 16:14,EMFB,94,54.9,GAIL,ENERGY,185.6,179.77,200.18,True,Low,RS vs Nifty (1D): -1.30% | Recovery: 47% | Closing Strength: 45% | LH Vol Ratio: 2.7x | VWAP Dist: +0.27%
+2026-11-23 16:14,EMFB,95,54.8,ETERNAL,RETAIL,362.1,348.55,395.97,True,Low,RS vs Nifty (1D): +1.23% | Recovery: 55% | Closing Strength: 47% | LH Vol Ratio: 1.7x | VWAP Dist: -0.06%
+2026-11-23 16:14,EMFB,96,54.5,STLTECH,TELECOM,590.8,528.79,745.82,True,Low,RS vs Nifty (1D): -3.25% | Recovery: 100% | Closing Strength: 100% | LH Vol Ratio: 0.3x | VWAP Dist: -0.00%
+2026-11-23 16:14,EMFB,97,54.2,LT,CAPITAL_GOODS,4099.9,3972.93,4417.32,True,Low,RS vs Nifty (1D): -0.85% | Recovery: 48% | Closing Strength: 45% | LH Vol Ratio: 2.8x | VWAP Dist: -0.18%
+2026-11-23 16:14,EMFB,98,53.9,HAL,DEFENCE,4780.0,4613.26,5196.84,True,Low,RS vs Nifty (1D): +1.14% | Recovery: 38% | Closing Strength: 32% | LH Vol Ratio: 1.5x | VWAP Dist: +0.09%
+2026-11-23 16:14,EMFB,99,53.7,ICICIBANK,FINANCE,1585.5,1534.47,1713.07,True,Low,RS vs Nifty (1D): -1.58% | Recovery: 44% | Closing Strength: 42% | LH Vol Ratio: 4.5x | VWAP Dist: -0.37%
+2026-11-23 16:14,EMFB,100,53.1,AXISBANK,FINANCE,1388.6,1331.98,1530.16,True,Low,RS vs Nifty (1D): -2.22% | Recovery: 34% | Closing Strength: 34% | LH Vol Ratio: 3.4x | VWAP Dist: -0.84%
+2026-11-23 16:14,EMFB,101,53.0,LUPIN,PHARMA,1975.6,1918.52,2118.31,True,Low,RS vs Nifty (1D): -0.16% | Recovery: 22% | Closing Strength: 20% | LH Vol Ratio: 2.7x | VWAP Dist: -0.20%
+2026-11-23 16:14,EMFB,102,52.9,TEXRAIL,RAILWAYS,112.02,106.05,126.94,True,Low,RS vs Nifty (1D): +2.33% | Recovery: 39% | Closing Strength: 26% | LH Vol Ratio: 0.8x | VWAP Dist: -0.35%
+2026-11-23 16:14,EMFB,103,52.8,KPIGREEN,POWER,316.3,289.51,383.29,True,Low,RS vs Nifty (1D): -1.35% | Recovery: 36% | Closing Strength: 35% | LH Vol Ratio: 0.5x | VWAP Dist: -0.01%
+2026-11-23 16:14,EMFB,104,52.6,BHARATFORG,AUTO_ANC,1722.0,1649.05,1904.39,True,Low,RS vs Nifty (1D): +0.15% | Recovery: 29% | Closing Strength: 21% | LH Vol Ratio: 1.5x | VWAP Dist: -0.68%
+2026-11-23 16:14,EMFB,105,52.4,BAJAJ-AUTO,AUTO,10643.0,10302.14,11495.15,True,Low,RS vs Nifty (1D): +0.61% | Recovery: 43% | Closing Strength: 32% | LH Vol Ratio: 3.7x | VWAP Dist: -0.48%
+2026-11-23 16:14,EMFB,106,52.2,BPCL,ENERGY,305.35,293.64,334.62,True,Low,RS vs Nifty (1D): -1.04% | Recovery: 35% | Closing Strength: 34% | LH Vol Ratio: 2.8x | VWAP Dist: +0.04%
+2026-11-23 16:14,EMFB,107,52.1,VIJAYA,HEALTHCARE,1562.0,1464.66,1805.36,True,Low,RS vs Nifty (1D): +1.09% | Recovery: 47% | Closing Strength: 18% | LH Vol Ratio: 1.2x | VWAP Dist: -1.94%
+2026-11-23 16:14,EMFB,108,51.9,THERMAX,CAPITAL_GOODS,2700.0,2567.97,3030.07,True,Low,RS vs Nifty (1D): +1.09% | Recovery: 45% | Closing Strength: 44% | LH Vol Ratio: 0.9x | VWAP Dist: +0.04%
+2026-11-23 16:14,EMFB,109,51.8,FLUOROCHEM,CHEMICALS,4890.0,4647.39,5496.52,True,Low,RS vs Nifty (1D): +0.88% | Recovery: 33% | Closing Strength: 32% | LH Vol Ratio: 0.3x | VWAP Dist: -0.68%
+2026-11-23 16:14,EMFB,110,51.4,ROUTE,IT,417.95,399.47,464.15,True,Low,RS vs Nifty (1D): +1.88% | Recovery: 98% | Closing Strength: 42% | LH Vol Ratio: 0.5x | VWAP Dist: +0.29%
+2026-11-23 16:14,EMFB,111,51.4,SHREECEM,CEMENT,25150.0,24338.46,27178.85,True,Low,RS vs Nifty (1D): +0.47% | Recovery: 31% | Closing Strength: 31% | LH Vol Ratio: 0.7x | VWAP Dist: -0.07%
+2026-11-23 16:14,EMFB,112,50.4,MOSCHIP,IT,161.78,154.23,180.66,True,Low,RS vs Nifty (1D): +2.03% | Recovery: 75% | Closing Strength: 39% | LH Vol Ratio: 0.2x | VWAP Dist: +0.15%
+2026-11-23 16:14,EMFB,113,49.7,BAJAJFINSV,FINANCE,1880.1,1815.19,2042.38,True,Low,RS vs Nifty (1D): +1.12% | Recovery: 19% | Closing Strength: 16% | LH Vol Ratio: 2.0x | VWAP Dist: -0.31%
+2026-11-23 16:14,EMFB,114,49.2,BSE,FINANCE,3757.0,3588.83,4177.44,True,Low,RS vs Nifty (1D): +1.11% | Recovery: 44% | Closing Strength: 36% | LH Vol Ratio: 1.0x | VWAP Dist: +0.09%
+2026-11-23 16:14,EMFB,115,48.9,HDFCBANK,FINANCE,817.8,785.29,899.07,True,Low,RS vs Nifty (1D): -1.59% | Recovery: 37% | Closing Strength: 34% | LH Vol Ratio: 4.2x | VWAP Dist: -0.97%
+2026-11-23 16:14,EMFB,116,48.9,JSWSTEEL,METAL,1311.9,1265.14,1428.79,True,Low,RS vs Nifty (1D): -0.13% | Recovery: 32% | Closing Strength: 24% | LH Vol Ratio: 3.7x | VWAP Dist: -0.32%
+2026-11-23 16:14,EMFB,117,48.9,INDIANB,PSU_BANK,933.0,898.01,1020.49,True,Low,RS vs Nifty (1D): -0.04% | Recovery: 29% | Closing Strength: 26% | LH Vol Ratio: 2.0x | VWAP Dist: -0.34%
+2026-11-23 16:14,EMFB,118,48.8,PSPPROJECT,INFRA,770.5,732.69,865.03,True,Low,RS vs Nifty (1D): +2.92% | Recovery: 14% | Closing Strength: 13% | LH Vol Ratio: 5.8x | VWAP Dist: -0.00%
+2026-11-23 16:14,EMFB,119,48.7,ADANIPOWER,POWER,207.9,199.85,228.04,True,Low,RS vs Nifty (1D): -0.16% | Recovery: 33% | Closing Strength: 26% | LH Vol Ratio: 2.2x | VWAP Dist: -0.96%
+2026-11-23 16:14,EMFB,120,48.3,AMBUJACEM,CEMENT,391.95,375.93,432.0,True,Low,RS vs Nifty (1D): -0.26% | Recovery: 18% | Closing Strength: 16% | LH Vol Ratio: 2.7x | VWAP Dist: -0.52%
+2026-11-23 16:14,EMFB,121,48.3,NHPC,POWER,75.36,72.54,82.42,True,Low,RS vs Nifty (1D): +0.12% | Recovery: 29% | Closing Strength: 23% | LH Vol Ratio: 1.8x | VWAP Dist: -0.34%
+2026-11-23 16:14,EMFB,122,48.0,PREMEXPLN,DEFENCE,577.4,527.08,703.19,True,Low,RS vs Nifty (1D): +7.00% | Recovery: 2% | Closing Strength: 1% | LH Vol Ratio: 2.7x | VWAP Dist: -2.82%
+2026-11-23 16:14,EMFB,123,47.8,ULTRACEMCO,CEMENT,12650.0,12229.94,13700.15,True,Low,RS vs Nifty (1D): -0.49% | Recovery: 10% | Closing Strength: 10% | LH Vol Ratio: 3.0x | VWAP Dist: -0.18%
+2026-11-23 16:14,EMFB,124,47.6,KEI,CAPITAL_GOODS,3800.6,3597.94,4307.25,True,Low,RS vs Nifty (1D): +1.03% | Recovery: 48% | Closing Strength: 32% | LH Vol Ratio: 0.8x | VWAP Dist: -0.47%
+2026-11-23 16:14,EMFB,125,47.5,KALYANKJIL,RETAIL,652.9,597.66,791.0,True,Low,RS vs Nifty (1D): +6.33% | Recovery: 100% | Closing Strength: 42% | LH Vol Ratio: 0.8x | VWAP Dist: -1.21%
+2026-11-23 16:14,EMFB,126,47.3,ZENTEC,DEFENCE,1685.0,1612.11,1867.22,True,Low,RS vs Nifty (1D): +1.99% | Recovery: 99% | Closing Strength: 31% | LH Vol Ratio: 0.4x | VWAP Dist: -0.84%
+2026-11-23 16:14,EMFB,127,47.2,UNIMECH,DEFENCE,1755.0,1619.45,2093.87,True,Low,RS vs Nifty (1D): +0.22% | Recovery: 52% | Closing Strength: 48% | LH Vol Ratio: 0.5x | VWAP Dist: +0.61%
+2026-11-23 16:14,EMFB,128,46.2,MANKIND,PHARMA,2615.1,2526.52,2836.55,True,Low,RS vs Nifty (1D): -0.12% | Recovery: 32% | Closing Strength: 29% | LH Vol Ratio: 1.4x | VWAP Dist: -0.16%
+2026-11-23 16:14,EMFB,129,46.2,ENGINERSIN,INFRA,298.1,280.79,341.36,True,Low,RS vs Nifty (1D): +2.27% | Recovery: 104% | Closing Strength: 30% | LH Vol Ratio: 0.2x | VWAP Dist: -0.60%
+2026-11-23 16:14,EMFB,130,45.7,SAIL,METAL,162.0,153.47,183.32,True,Low,RS vs Nifty (1D): +0.46% | Recovery: 37% | Closing Strength: 35% | LH Vol Ratio: 0.8x | VWAP Dist: -0.02%
+2026-11-23 16:14,EMFB,131,45.6,CAMS,FINANCE,722.15,685.25,814.4,True,Low,RS vs Nifty (1D): +1.40% | Recovery: 35% | Closing Strength: 20% | LH Vol Ratio: 0.9x | VWAP Dist: -0.58%
+2026-11-23 16:14,EMFB,132,45.0,VEDL,METAL,235.53,224.47,263.17,True,Low,RS vs Nifty (1D): +0.69% | Recovery: 31% | Closing Strength: 31% | LH Vol Ratio: 1.7x | VWAP Dist: +0.11%
