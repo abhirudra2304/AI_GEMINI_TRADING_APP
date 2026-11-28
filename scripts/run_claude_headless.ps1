@@ -9,7 +9,10 @@ param(
     [int]$TimeoutMinutes = 25
 )
 $ErrorActionPreference = "Continue"
-$root = "C:\AI_GEMINI_TRADING_APP"
+# DISABLED 2026-11-28: burned usage for no gain (journal_signals.py already runs in run_nightly.ps1).
+# Remove the TradingApp_EOD action (needs elevated shell), then this file can be deleted.
+exit 0
+$root ="C:\AI_GEMINI_TRADING_APP"
 Set-Location $root
 $logDir = Join-Path $root "logs"
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
