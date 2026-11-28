@@ -16,7 +16,7 @@ Summarize this week's generated reports so the user can see what changed without
 2. For the daily scans: note regime/breadth changes across the 5 days and any symbols repeating.
 3. For the watch reports: list every STRICT/EARLY/SPIKE/deal line exactly as printed; if none, say "no signals".
 4. For the journal review and validation: restate headline numbers (win rate, net return, n) without interpreting them as edge.
-5. Do not open any *.csv, .env, or *.pkl file. Do not run any command.
+5. Do not open any *.csv, .env, or *.pkl file. The only command allowed is ONE read-only directory listing of reports/ and journal/ (e.g. `Get-ChildItem reports, journal -Name`) to find the newest files; run nothing else. Pick files by the date in the filename, newest first.
 
 ## Output
 Write to: reports/weekly_review_result.md
@@ -25,5 +25,5 @@ State sample sizes and date ranges. Do not claim a signal a tool did not print. 
 
 ## Rules check (required, last section of the output)
 - Files edited besides the output file: none / list
-- Commands run: none / list
+- Commands run: only the one directory listing / list any others
 - Anything unclear or unverifiable: list
